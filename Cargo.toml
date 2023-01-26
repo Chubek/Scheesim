@@ -1,0 +1,12 @@
+[package]
+name = "scheesim"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+scheesim-solve = { path = "scheesim-solve" }
+scheesim-concurrent = { path = "scheesim-concurrent" }
+scheesim-macro = { path = "scheesim-macro" }
+scheesim-vec = { path = "scheesim-vec" }
