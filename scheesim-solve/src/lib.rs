@@ -1,23 +1,18 @@
 #![allow(unused)]
 
-use parking_lot::Mutex;
-use scheesim_concurrent::ThreadPool;
+use parking_lot::RwLock;
 use scheesim_macro::{make_vec, vec_op};
 use scheesim_vec::*;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, AtomicBool};
 use std::thread;
 use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc, Barrier},
 };
 
-macro_rules! copy_mutex_vec {
+macro_rules! copy_rwl_vec {
     ($vec:ident) => {{
-        $vec.lock()
-            .iter()
-            .cloned()
-            .map(|itm| itm)
-            .collect::<Vec<_>>()
+        $vec.read()            
     }};
 }
 
@@ -45,12 +40,25 @@ fn produce_list_of_intermittent_0s_and_1s(n: usize, odds: usize, evens: usize) -
         .collect()
 }
 
+trait IsZeroAt {
+    fn is_zero_at(&self, i: usize, j: usize) -> bool;
+}
+
+impl IsZeroAt for Arc<RwLock<Vec<Vec<f64>>>> {
+    fn is_zero_at(&self, i: usize, j: usize) -> bool {
+        let self_cln = Arc::clone(&self);
+        let is_zero = self_cln.read()[i][j] == 0.0;
+
+        is_zero
+    }
+}
+
 /// This function takes the barriers and select number of columns. Wait for all threads to reach
 /// that row. Then factorizes and eliminates those columns.
 fn barrier_rows_and_solve_cols(
-    coeffs: Arc<Mutex<Vec<Vec<f64>>>>,
-    lvals: Arc<Mutex<Vec<Vec<f64>>>>,
-    permutation: Arc<Mutex<Vec<Vec<f64>>>>,
+    coeffs: Arc<RwLock<Vec<Vec<f64>>>>,
+    lvals: Arc<RwLock<Vec<Vec<f64>>>>,
+    permutation: Arc<RwLock<Vec<Vec<f64>>>>,
     row_barrier: Arc<Barrier>,
     phase_barrier: Arc<Barrier>,
     pivot_barrier: Arc<Barrier>,
@@ -62,66 +70,42 @@ fn barrier_rows_and_solve_cols(
     let tn = thread_modulo.load(Ordering::Relaxed);
     (0..size_loaded).into_iter().for_each(|i| {
         row_barrier.wait();
-        for k in (i + 1..size_loaded) {
-            match coeffs
-                .lock()
-                .get(i)
-                .expect("Error getting ith outher")
-                .get(i)
-                .expect("Error getting ith inner")
-                .clone()
-                == 0.0f64
-            {
+        for k in (i..size_loaded) {
+            let coeffs_clone = Arc::clone(&coeffs);
+            let permutation_clone = Arc::clone(&permutation);
+           
+            match coeffs_clone.is_zero_at(i, i) {
                 true => {
-                    pivot_barrier.wait();
-                    coeffs.lock().swap(i, k + 1);
-                    permutation.lock().swap(i, k + 1);
+                    coeffs_clone.write().swap(i, k + 1);
+                    permutation_clone.write().swap(i, k + 1);
                 }
                 false => break,
             }
         }
+        
+        pivot_barrier.wait();
 
         this_cols
             .iter()
             .cloned()
             .filter(|j| (*j > i) && (j % 2 == tn))
             .for_each(|j| {
-                let ii = coeffs
-                    .lock()
-                    .get(i)
-                    .expect("Error getting ith outer for factorization RHS")
-                    .get(i)
-                    .expect("Error getting ith inner for factorization LHS")
-                    .clone();
-                let ji = coeffs
-                    .lock()
-                    .get(j)
-                    .expect("Error getting jth outer or factorization operand")
-                    .get(i)
-                    .expect("Error getting ith inner for factorization operand")
-                    .clone();
+                let ii = coeffs.read()[i][i];
+                let ji = coeffs.read()[j][i];
 
                 let factor = ji / ii;
 
                 lvals
-                    .lock()
+                    .write()
                     .get_mut(j)
                     .expect("Error getting jth outer lvalues")
                     .push_and_swap_remove(i, factor);
 
-                let row_i_clone = coeffs
-                    .lock()
-                    .get(i)
-                    .expect("Error getting ith for row i elimination")
-                    .clone();
-                let row_j_clone = coeffs
-                    .lock()
-                    .get(j)
-                    .expect("Error getting jth for row_j elimination")
-                    .clone();
+                let row_i_clone = coeffs.read()[i].clone();
+                let row_j_clone = coeffs.read()[j].clone();
 
                 let subtraction_prod_uj = row_j_clone.sub(&row_i_clone.mul(&factor));
-                coeffs.lock().push_and_swap_remove(j, subtraction_prod_uj);
+                coeffs.write().push_and_swap_remove(j, subtraction_prod_uj);
             });
     });
 
@@ -179,9 +163,9 @@ fn backward_substitution(coeffs: &Vec<Vec<f64>>, rhs_dot: &Vec<f64>, size: usize
 }
 
 pub struct EliminatorSolver {
-    coeffs: Arc<Mutex<Vec<Vec<f64>>>>,
-    lvals: Arc<Mutex<Vec<Vec<f64>>>>,
-    permutation: Arc<Mutex<Vec<Vec<f64>>>>,
+    coeffs: Arc<RwLock<Vec<Vec<f64>>>>,
+    lvals: Arc<RwLock<Vec<Vec<f64>>>>,
+    permutation: Arc<RwLock<Vec<Vec<f64>>>>,
     row_barrier: Arc<Barrier>,
     phase_barrier: Arc<Barrier>,
     pivot_barrier: Arc<Barrier>,
@@ -197,11 +181,11 @@ impl EliminatorSolver {
         let num_threads = m - 1;
 
         let (lvals, permutation) = (
-            Arc::new(Mutex::new(make_eye_matrix(n, m))),
-            Arc::new(Mutex::new(make_eye_matrix(n, m))),
+            Arc::new(RwLock::new(make_eye_matrix(n, m))),
+            Arc::new(RwLock::new(make_eye_matrix(n, m))),
         );
 
-        let coeffs = Arc::new(Mutex::new(coefficients.clone()));
+        let coeffs = Arc::new(RwLock::new(coefficients.clone()));
         let rhs = right_hand_side.clone();
 
         let row_barrier = Arc::new(Barrier::new(num_threads));
@@ -267,8 +251,8 @@ impl EliminatorSolver {
         let ref_lval = self.lvals.as_ref();
         let ref_perm = self.permutation.as_ref();
 
-        let lvals_cpy = copy_mutex_vec!(ref_lval);
-        let perm_cpy = copy_mutex_vec!(ref_perm);
+        let lvals_cpy = copy_rwl_vec!(ref_lval);
+        let perm_cpy = copy_rwl_vec!(ref_perm);
 
         let dot_prod = perm_cpy.dot(&self.rhs);
 
@@ -277,7 +261,7 @@ impl EliminatorSolver {
 
     fn backward_sub_coeffs_fws_res(&self, forward_sub_res: &Vec<f64>) -> Vec<f64> {
         let ref_coeffs = self.coeffs.as_ref();
-        let coeffs_cpy = copy_mutex_vec!(ref_coeffs);
+        let coeffs_cpy = copy_rwl_vec!(ref_coeffs);
 
         backward_substitution(&coeffs_cpy, forward_sub_res, self.n)
     }
