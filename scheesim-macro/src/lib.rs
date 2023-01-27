@@ -65,3 +65,32 @@ pub fn vec_op(input: TokenStream) -> TokenStream {
 
     TokenStream::from_str(&fin_str).expect("Error putting stream together")
 }
+
+
+#[proc_macro]
+pub fn make_vec(input: TokenStream) -> TokenStream {
+    let input_str = input.to_string();
+    
+    let mut split = input_str.split('$');
+
+    let (ty, init, num) = (
+        split.next().expect("Error type"),
+        split.next().expect("Error initializer"),
+        split.next().expect("Error size"),
+
+    );
+
+    let final_str = format!(r#"
+        {{ 
+            let mut vec: Vec<{ty}> = vec![];  
+            
+            (0..{num}).into_iter().for_each(|_| {{
+                let new_item = {init};
+                vec.push(new_item);
+            }} );
+
+            vec
+        }}"#);
+
+    TokenStream::from_str(&final_str).expect("Error putting stream back together")
+}

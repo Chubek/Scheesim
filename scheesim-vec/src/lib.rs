@@ -5,7 +5,6 @@ pub trait PushAndSwapRemove<T> {
 }
 
 impl<T> PushAndSwapRemove<T> for Vec<T> {
-    #[inline]
     fn push_and_swap_remove(&mut self, i: usize, val: T) {
         self.push(val);
         self.swap_remove(i);

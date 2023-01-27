@@ -2,9 +2,10 @@
 
 use parking_lot::Mutex;
 use scheesim_concurrent::ThreadPool;
-use scheesim_macro::vec_op;
+use scheesim_macro::{make_vec, vec_op};
 use scheesim_vec::*;
 use std::sync::atomic::AtomicUsize;
+use std::thread;
 use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc, Barrier},
@@ -34,6 +35,16 @@ fn make_eye_matrix(n: usize, m: usize) -> Vec<Vec<f64>> {
     eye
 }
 
+fn produce_list_of_intermittent_0s_and_1s(n: usize, odds: usize, evens: usize) -> Vec<usize> {
+    (0..n)
+        .into_iter()
+        .map(|i| match i % 2 == 0 {
+            true => evens,
+            false => odds,
+        })
+        .collect()
+}
+
 /// This function takes the barriers and select number of columns. Wait for all threads to reach
 /// that row. Then factorizes and eliminates those columns.
 fn barrier_rows_and_solve_cols(
@@ -41,16 +52,16 @@ fn barrier_rows_and_solve_cols(
     lvals: Arc<Mutex<Vec<Vec<f64>>>>,
     permutation: Arc<Mutex<Vec<Vec<f64>>>>,
     row_barrier: Arc<Barrier>,
+    phase_barrier: Arc<Barrier>,
     pivot_barrier: Arc<Barrier>,
     this_cols: Vec<usize>,
     size: AtomicUsize,
+    thread_modulo: AtomicUsize,
 ) {
-    let barrier_clone = Arc::clone(&row_barrier);
     let size_loaded = size.load(Ordering::Relaxed);
-
+    let tn = thread_modulo.load(Ordering::Relaxed);
     (0..size_loaded).into_iter().for_each(|i| {
-        barrier_clone.wait();
-
+        row_barrier.wait();
         for k in (i + 1..size_loaded) {
             match coeffs
                 .lock()
@@ -70,42 +81,51 @@ fn barrier_rows_and_solve_cols(
             }
         }
 
-        this_cols.iter().cloned().for_each(|j| {
-            let factor = coeffs
-                .lock()
-                .get(j)
-                .expect("Error getting jth outer or factorization operand")
-                .get(i)
-                .expect("Error getting ith inner for factorization operand")
-                .clone()
-                * coeffs
+        this_cols
+            .iter()
+            .cloned()
+            .filter(|j| (*j > i) && (j % 2 == tn))
+            .for_each(|j| {
+                let ii = coeffs
                     .lock()
                     .get(i)
                     .expect("Error getting ith outer for factorization RHS")
                     .get(i)
                     .expect("Error getting ith inner for factorization LHS")
                     .clone();
-            lvals
-                .lock()
-                .get_mut(j)
-                .expect("Error getting jth outer lvalues")
-                .push_and_swap_remove(i, factor);
+                let ji = coeffs
+                    .lock()
+                    .get(j)
+                    .expect("Error getting jth outer or factorization operand")
+                    .get(i)
+                    .expect("Error getting ith inner for factorization operand")
+                    .clone();
 
-            let row_i_clone = coeffs
-                .lock()
-                .get(i)
-                .expect("Error getting ith for row i elimination")
-                .clone();
-            let row_j_clone = coeffs
-                .lock()
-                .get(j)
-                .expect("Error getting jth for row_j elimination")
-                .clone();
+                let factor = ji / ii;
 
-            let subtraction_prod_uj = row_j_clone.sub(&row_i_clone.mul(&factor));
-            coeffs.lock().push_and_swap_remove(j, subtraction_prod_uj);
-        });
+                lvals
+                    .lock()
+                    .get_mut(j)
+                    .expect("Error getting jth outer lvalues")
+                    .push_and_swap_remove(i, factor);
+
+                let row_i_clone = coeffs
+                    .lock()
+                    .get(i)
+                    .expect("Error getting ith for row i elimination")
+                    .clone();
+                let row_j_clone = coeffs
+                    .lock()
+                    .get(j)
+                    .expect("Error getting jth for row_j elimination")
+                    .clone();
+
+                let subtraction_prod_uj = row_j_clone.sub(&row_i_clone.mul(&factor));
+                coeffs.lock().push_and_swap_remove(j, subtraction_prod_uj);
+            });
     });
+
+    phase_barrier.wait();
 }
 
 fn forward_substitute(lvals: &Vec<Vec<f64>>, rhs: &Vec<f64>, size: usize) -> Vec<f64> {
@@ -143,7 +163,7 @@ fn backward_substitution(coeffs: &Vec<Vec<f64>>, rhs_dot: &Vec<f64>, size: usize
             / coeffs[size - 1][size - 1],
     );
 
-    (0..size - 2).into_iter().rev().for_each(|i| {
+    (0..size - 1).into_iter().rev().for_each(|i| {
         let x_range = x[i..].to_vec();
         let coeff_range = coeffs
             .get(i)
@@ -158,11 +178,12 @@ fn backward_substitution(coeffs: &Vec<Vec<f64>>, rhs_dot: &Vec<f64>, size: usize
     x
 }
 
-struct EliminatorSolver {
+pub struct EliminatorSolver {
     coeffs: Arc<Mutex<Vec<Vec<f64>>>>,
     lvals: Arc<Mutex<Vec<Vec<f64>>>>,
     permutation: Arc<Mutex<Vec<Vec<f64>>>>,
     row_barrier: Arc<Barrier>,
+    phase_barrier: Arc<Barrier>,
     pivot_barrier: Arc<Barrier>,
     col_nums: Vec<Vec<usize>>,
     rhs: Vec<f64>,
@@ -171,12 +192,10 @@ struct EliminatorSolver {
 }
 
 impl EliminatorSolver {
-    pub fn new(
-        coefficients: &Vec<Vec<f64>>,
-        right_hand_side: &Vec<f64>,
-        num_threads: usize,
-    ) -> Self {
-        let (m, n) = (coefficients.len(), coefficients[0].len());
+    pub fn new(coefficients: &Vec<Vec<f64>>, right_hand_side: &Vec<f64>) -> Self {
+        let (n, m) = (coefficients.len(), coefficients[0].len());
+        let num_threads = m - 1;
+
         let (lvals, permutation) = (
             Arc::new(Mutex::new(make_eye_matrix(n, m))),
             Arc::new(Mutex::new(make_eye_matrix(n, m))),
@@ -186,23 +205,17 @@ impl EliminatorSolver {
         let rhs = right_hand_side.clone();
 
         let row_barrier = Arc::new(Barrier::new(num_threads));
+        let phase_barrier = Arc::new(Barrier::new(num_threads));
         let pivot_barrier = Arc::new(Barrier::new(num_threads));
 
-        let mut col_nums = vec![vec![0usize; 0]; num_threads];
-
-        for i in (0..num_threads) {
-            for j in (0..n) {
-                if j % i == 0 {
-                    col_nums[i].push(j);
-                }
-            }
-        }
+        let col_nums = vec![(1..n).into_iter().collect(); num_threads];
 
         Self {
-            coeffs: coeffs,
+            coeffs,
             lvals,
             permutation,
             row_barrier,
+            phase_barrier,
             pivot_barrier,
             col_nums,
             rhs,
@@ -212,28 +225,42 @@ impl EliminatorSolver {
     }
 
     fn pivot_factor_eliminate_parallel_col(&self) {
-        let pool = ThreadPool::new(self.num_threads);
+        let (evens, odds) = (1, 0);
+        let intermittent_vec =
+            produce_list_of_intermittent_0s_and_1s(self.num_threads, odds, evens);
 
-        for this_cols in self.col_nums.iter().cloned() {
-            let coeffs = Arc::clone(&self.coeffs);
-            let lvals = Arc::clone(&self.lvals);
-            let permutation = Arc::clone(&self.permutation);
-            let row_barrier = Arc::clone(&self.row_barrier);
-            let pivot_barrier = Arc::clone(&self.pivot_barrier);
-            let size = AtomicUsize::new(self.n);
+        let thrds = self
+            .col_nums
+            .iter()
+            .cloned()
+            .zip(intermittent_vec.into_iter())
+            .map(|(this_cols, tn)| {
+                let coeffs = Arc::clone(&self.coeffs);
+                let lvals = Arc::clone(&self.lvals);
+                let permutation = Arc::clone(&self.permutation);
+                let row_barrier = Arc::clone(&self.row_barrier);
+                let phase_barrier = Arc::clone(&self.phase_barrier);
+                let pivot_barrier = Arc::clone(&self.pivot_barrier);
+                let size = AtomicUsize::new(self.n);
+                let thread_modulo = AtomicUsize::new(tn);
 
-            pool.execute(|| {
-                barrier_rows_and_solve_cols(
-                    coeffs,
-                    lvals,
-                    permutation,
-                    row_barrier,
-                    pivot_barrier,
-                    this_cols,
-                    size,
-                )
-            });
-        }
+                thread::spawn(|| {
+                    barrier_rows_and_solve_cols(
+                        coeffs,
+                        lvals,
+                        permutation,
+                        row_barrier,
+                        phase_barrier,
+                        pivot_barrier,
+                        this_cols,
+                        size,
+                        thread_modulo,
+                    )
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .for_each(|t| t.join().expect("Error joining thread"));
     }
 
     fn forward_sub_inner_prod_perm_rhs(&self) -> Vec<f64> {
