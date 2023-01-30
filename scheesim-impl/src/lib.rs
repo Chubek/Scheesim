@@ -359,111 +359,12 @@ impl Dampen<f64, Vec<f64>> for Vec<f64> {
 
 
 
-
-pub type NonLinearDerivitiveFunc = &'static dyn Fn(f64) -> f64;
-
 #[derive(Clone)]
-pub enum RhsValueType {
-    LinearValue(f64),
-    LinearizerFunc(NonLinearDerivitiveFunc, f64),
+pub enum ElementStampType<'a> {
+    Linear(f64),
+    NonLinear(&'a dyn Fn(f64) -> f64),
+    Dynamic(&'a dyn Fn(f64, u64) -> f64),
+    MultiTerminalNonLinear(&'a dyn Fn(f64, f64) -> f64),
+    MultiTerminalDyanmic(&'a dyn Fn(f64, f64, u64) -> f64),    
 }
 
-impl<'a> RhsValueType {
-    pub fn new_linear(f: f64) -> Self {
-        Self::LinearValue(f)
-    }
-
-    pub fn new_linearizer(f: NonLinearDerivitiveFunc, arg: f64) -> Self {
-        Self::LinearizerFunc(f, arg)
-    }
-
-    pub fn result(&self) -> f64 {
-        match self {
-            RhsValueType::LinearValue(f) => *f,
-            RhsValueType::LinearizerFunc(f, arg) => f(arg.clone()),
-        }
-    }
-
-    pub fn update_arg(&mut self, value: f64) {
-        match self {
-            RhsValueType::LinearValue(_) => *self = Self::LinearValue(value),
-            RhsValueType::LinearizerFunc(f, _) => *self = Self::LinearizerFunc(*f, value),
-        }
-    }
-}
-
-pub trait NonLinearCalculateKth {
-    fn calculate_linearize_at_kth(&self, alpha: f64, k: usize) -> Vec<f64>;
-    fn update_all(&mut self, v: Vec<f64>);
-}
-
-impl<'a> NonLinearCalculateKth for Vec<RhsValueType> {
-    fn calculate_linearize_at_kth(&self, alpha: f64, k: usize) -> Vec<f64> {
-        self.into_iter()
-            .map(|itm| itm.result().dampen_ln(alpha, k))
-            .collect()
-    }
-
-    fn update_all(&mut self, v: Vec<f64>) {
-        self.iter_mut().zip(v.iter()).map(|(itm, value)| itm.update_arg(*value)).collect()
-    }
-}
-
-#[derive(Clone)]
-pub enum UnknownFactor {
-    Voltage(f64),
-    Current(f64),
-}
-
-impl UnknownFactor {
-    pub fn zero_factor(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "v" | "voltage" | "volt" => Self::Voltage(0.0),
-            "i" | "amperage" | "current" | "ampers" | "ampere" | "amper" => Self::Current(0.0),
-            _ => panic!("Should be volts or ampers"),
-        }
-    }
-
-    pub fn set(&mut self, value: f64) {
-        match self {
-            UnknownFactor::Voltage(_) => *self = Self::Voltage(value),
-            UnknownFactor::Current(_) => *self = Self::Current(value),
-        }
-    }
-
-    pub fn get(&self) -> f64 {
-        match self {
-            UnknownFactor::Voltage(f) => *f,
-            UnknownFactor::Current(f) => *f,
-        }
-    }
-}
-
-pub trait GetSetAll {
-    fn get_all(&self) -> Vec<f64>;
-    fn set_all(&mut self, rep: Vec<f64>);
-}
-
-impl GetSetAll for Vec<UnknownFactor> {
-    fn get_all(&self) -> Vec<f64> {
-        self.iter().map(|itm| itm.get()).collect()
-    }
-
-    fn set_all(&mut self, rep: Vec<f64>) {
-        self.iter_mut()
-            .zip(rep.iter().cloned())
-            .for_each(|(uf, f)| uf.set(f));
-    }
-}
-
-impl GetSetAll for Vec<f64> {
-    fn get_all(&self) -> Vec<f64> {
-        self.iter().cloned().map(|f| f).collect()
-    }
-
-    fn set_all(&mut self, rep: Vec<f64>) {
-        self.iter_mut()
-            .zip(rep.iter().cloned())
-            .for_each(|(itm, rep)| *itm = rep);
-    }
-}

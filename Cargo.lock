@@ -83,6 +83,7 @@ version = "0.1.0"
 dependencies = [
  "scheesim-concurrent",
  "scheesim-impl",
+ "scheesim-lexparse",
  "scheesim-macro",
  "scheesim-solve",
 ]
@@ -101,6 +102,10 @@ dependencies = [
  "num-traits",
  "scheesim-macro",
 ]
+
+[[package]]
+name = "scheesim-lexparse"
+version = "0.1.0"
 
 [[package]]
 name = "scheesim-macro"
