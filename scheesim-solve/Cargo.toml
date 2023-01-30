@@ -9,4 +9,4 @@ edition = "2021"
 parking_lot = "*"
 scheesim-concurrent = { path = "../scheesim-concurrent" }
 scheesim-macro = { path = "../scheesim-macro" }
-scheesim-vec = { path = "../scheesim-vec" }
+scheesim-impl = { path = "../scheesim-impl" }

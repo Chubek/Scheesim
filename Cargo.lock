@@ -37,6 +37,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-traits"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -73,9 +82,9 @@ name = "scheesim"
 version = "0.1.0"
 dependencies = [
  "scheesim-concurrent",
+ "scheesim-impl",
  "scheesim-macro",
  "scheesim-solve",
- "scheesim-vec",
 ]
 
 [[package]]
@@ -83,6 +92,14 @@ name = "scheesim-concurrent"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
+]
+
+[[package]]
+name = "scheesim-impl"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "scheesim-macro",
 ]
 
 [[package]]
@@ -95,14 +112,7 @@ version = "0.1.0"
 dependencies = [
  "parking_lot",
  "scheesim-concurrent",
- "scheesim-macro",
- "scheesim-vec",
-]
-
-[[package]]
-name = "scheesim-vec"
-version = "0.1.0"
-dependencies = [
+ "scheesim-impl",
  "scheesim-macro",
 ]
 

@@ -1,5 +1,5 @@
 [package]
-name = "scheesim-vec"
+name = "scheesim-impl"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 scheesim-macro = { path = "../scheesim-macro" }
+num-traits = "*"

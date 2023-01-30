@@ -1,9 +1,9 @@
 #![allow(unused)]
 
 use parking_lot::RwLock;
+use scheesim_impl::*;
 use scheesim_macro::{make_vec, vec_op};
-use scheesim_vec::*;
-use std::sync::atomic::{AtomicUsize, AtomicBool};
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::thread;
 use std::{
     ops::Deref,
@@ -12,7 +12,7 @@ use std::{
 
 macro_rules! copy_rwl_vec {
     ($vec:ident) => {{
-        $vec.read()            
+        $vec.read()
     }};
 }
 
@@ -73,7 +73,7 @@ fn barrier_rows_and_solve_cols(
         for k in (i..size_loaded) {
             let coeffs_clone = Arc::clone(&coeffs);
             let permutation_clone = Arc::clone(&permutation);
-           
+
             match coeffs_clone.is_zero_at(i, i) {
                 true => {
                     coeffs_clone.write().swap(i, k + 1);
@@ -82,7 +82,7 @@ fn barrier_rows_and_solve_cols(
                 false => break,
             }
         }
-        
+
         pivot_barrier.wait();
 
         this_cols
@@ -272,4 +272,164 @@ impl EliminatorSolver {
 
         self.backward_sub_coeffs_fws_res(&fws_res)
     }
+}
+
+fn gauss_jacobi_iterative_solve(
+    coeffs: &Vec<Vec<f64>>,
+    rhs: &Vec<f64>,
+    init_guess: &Vec<f64>,
+    num_iter: usize,
+    abs_tol: f64,
+    rel_tol: f64,
+) -> Vec<f64> {
+    let coeffs_diag = coeffs.diag();
+    let coeffs_diagflat = coeffs.diag_flat();
+    let coeff_sub_diagflat: Vec<Vec<_>> = coeffs.sub(&coeffs_diagflat);
+
+    let mut x = init_guess.clone();
+
+    for _ in 0..num_iter {
+        let x_old = x.clone();
+
+        let coeffs_sub_diagflat_dot_x = coeff_sub_diagflat.dot(&x);
+        let coeffs_sub_diagflat_dot_x_sub_rhs: Vec<f64> = coeffs_sub_diagflat_dot_x.sub(rhs);
+
+        x = coeffs_sub_diagflat_dot_x_sub_rhs.div(&coeffs_diag);
+
+        if x.is_convergent(&x_old, rel_tol, abs_tol) {
+            return x;
+        }
+    }
+
+    x
+}
+
+fn gauss_seidel_iterative_solve(
+    coeffs: &Vec<Vec<f64>>,
+    rhs: &Vec<f64>,
+    init_guess: &Vec<f64>,
+    num_iter: usize,
+    abs_tol: f64,
+    rel_tol: f64,
+) -> Vec<f64> {
+    let n = coeffs.len();
+    let mut x = init_guess.clone();
+
+    for _ in 0..num_iter {
+        let mut x_curr = vec![0.0f64; n];
+
+        for j in 0..n {
+            let s1: f64 = coeffs[j][..j].to_vec().dot(&x_curr[..j].to_vec());
+            let s2: f64 = coeffs[j][j + 1..].to_vec().dot(&x_curr[j + 1..].to_vec());
+
+            let rhs_sub_s1s2 = rhs[j] - s1 - s2;
+
+            x_curr[j] = rhs_sub_s1s2 / coeffs[j][j];
+        }
+
+        if x.is_convergent(&x_curr, rel_tol, abs_tol) {
+            return x_curr;
+        }
+
+        x = x_curr;
+    }
+
+    x
+}
+
+pub enum LinearSystemSolve {
+    LFactorize,
+    GaussJacobi,
+    GaussSeidel,
+}
+
+impl LinearSystemSolve {
+    pub fn from_str(s: String) -> Self {
+        match s.as_str() {
+            "lud" | "lu_factorize" | "lu_factorise" => Self::LFactorize,
+            "gj" | "gauss-jacobi" | "gauss_jacobi" | "jacobi" | "j" => Self::GaussJacobi,
+            "gs" | "gauss-seidel" | "gauss_seidel" | "seidel" | "s" => Self::GaussSeidel,
+            _ => panic!("Should be LU Factorize, Guauss-Jacobi or Gauss-Seidel"),
+        }
+    }
+
+    pub fn solve(
+        &self,
+        coeffs: &Vec<Vec<f64>>,
+        rhs: &Vec<f64>,
+        init_guess: Option<&Vec<f64>>,
+        num_iter: Option<usize>,
+        abs_tol: Option<f64>,
+        rel_tol: Option<f64>,
+    ) -> Vec<f64> {
+        match self {
+            Self::LFactorize => {
+                let solver = EliminatorSolver::new(coeffs, rhs);
+
+                solver.factorize_eliminate_solve()
+            }
+            Self::GaussJacobi => gauss_jacobi_iterative_solve(
+                coeffs,
+                rhs,
+                init_guess.unwrap(),
+                num_iter.unwrap(),
+                abs_tol.unwrap(),
+                rel_tol.unwrap(),
+            ),
+            Self::GaussSeidel => gauss_seidel_iterative_solve(
+                coeffs,
+                rhs,
+                init_guess.unwrap(),
+                num_iter.unwrap(),
+                abs_tol.unwrap(),
+                rel_tol.unwrap(),
+            ),
+        }
+    }
+}
+
+pub fn quasi_newton_iter_linear_until_converge<'a>(
+    coeffs_linear: &Vec<Vec<f64>>,
+    rhs: Vec<RhsValueType>,
+    init_guess: &mut Vec<UnknownFactor>,
+    alpha: f64,
+    num_iter: usize,
+    abs_tol: f64,
+    rel_tol: f64,
+    solver: LinearSystemSolve,
+    num_iter_solver: Option<usize>,
+    abs_tol_solver: Option<f64>,
+    rel_tol_solver: Option<f64>,
+) -> Vec<Vec<UnknownFactor>> {
+    let n = coeffs_linear.len();
+    let mut return_factors: Vec<Vec<UnknownFactor>> = vec![];
+    return_factors.push(init_guess.to_vec());
+
+    let mut last_unknowns = init_guess.clone();
+    let mut last_rhs = rhs.clone();
+
+    for k in 0..num_iter {
+        let last_unknowns_values = last_unknowns.get_all();
+        let rhs_at_k = last_rhs.calculate_linearize_at_kth(alpha, k);
+
+        let solved_at_k = solver.solve(
+            coeffs_linear,
+            &rhs_at_k,
+            Some(&last_unknowns_values),
+            num_iter_solver,
+            abs_tol_solver,
+            rel_tol_solver,
+        );
+
+        return_factors.push(last_unknowns.clone());
+
+        if solved_at_k.is_convergent(&last_unknowns_values, rel_tol, abs_tol) {
+            return return_factors;
+        }
+
+        last_unknowns.set_all(solved_at_k);
+        last_rhs.update_all(rhs_at_k);
+    }
+
+    return_factors
 }
