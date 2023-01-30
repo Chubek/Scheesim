@@ -10,6 +10,7 @@ pub enum EqualProperty {
     Voltage(String),
     Current(String),
     Power(String),
+    Frequency(String),
     MTETerminalPair(String, String),
 }
 
@@ -27,6 +28,7 @@ impl EqualProperty {
             "voltage" => Self::Voltage(value.trim().to_string()),
             "current" => Self::Current(value.trim().to_string()),
             "power" => Self::Power(value.trim().to_string()),
+            "frequency" => Self::Frequency(value.trim().to_string()),
             _ => Self::MTETerminalPair(key.trim().to_string(), value.trim().to_string()),
         }
     }
@@ -42,6 +44,7 @@ impl EqualProperty {
             EqualProperty::Voltage(value) => Some(Unit::from(value)),
             EqualProperty::Current(value) => Some(Unit::from(value)),
             EqualProperty::Power(value) => Some(Unit::from(value)),
+            EqualProperty::Frequency(value) => Some(Unit::from(value)),
             EqualProperty::MTETerminalPair(_, _) => None,
         }
     }
@@ -66,8 +69,33 @@ impl EqualProperty {
             _ => None,
         }   
     }
+
+    pub fn get_key(&self) -> &str {
+        match self {
+            EqualProperty::Bias(_) => "bias",
+            EqualProperty::Type(_) => "type",
+            EqualProperty::Resistance(_) => "resistance",
+            EqualProperty::Conductance(_) => "conductance",
+            EqualProperty::Capacitance(_) => "capacitance",
+            EqualProperty::Inductance(_) => "inductance",
+            EqualProperty::Voltage(_) => "voltage",
+            EqualProperty::Current(_) => "current",
+            EqualProperty::Power(_) => "power",
+            EqualProperty::Frequency(_) => "frequency",
+            EqualProperty::MTETerminalPair(_, _) => "pair",
+        }
+    }
 }
 
+pub trait FilterList<T, U> {
+    fn filter_for(&self, key: T) -> Option<&U>;
+}
+
+impl FilterList<&'static str, EqualProperty> for Vec<EqualProperty> {
+    fn filter_for(&self, key: &str) -> Option<&EqualProperty> {
+        self.iter().filter(|itm| itm.get_key() == key).next()
+    }
+}
 
 pub enum PadToken {
     Tab(usize),
@@ -152,21 +180,22 @@ impl MTETerminalPair {
 
 
 pub enum ElementFunction {
-    Resistor(Unit),
-    Capacitor(Unit),
-    Inductor(Unit),
-    VoltageSource(Unit),
-    CurrentSource(Unit),
-    CurrentControlledVoltageSource(Unit, Unit),
-    CurrentControlledCurrentSource(Unit, Unit),
-    VoltageControlledCurrentSource(Unit, Unit),
-    VoltageControlledVoltageSource(Unit, Unit),
-    BJT(Unit, Bias),
-    FET(Unit, Bias),
-    MOSFET(Unit, Bias),
-    Diode(Unit, Bias),
-    OpAmp(Unit),
-    IC(MTETerminalPair, Vec<Box<ElementFunction>>),
+    Resistor(Unit, ElementType),
+    Capacitor(Unit, ElementType),
+    Inductor(Unit, ElementType),
+    SineSource(Unit),
+    VoltageSource(Unit, ElementType),
+    CurrentSource(Unit, ElementType),
+    CurrentControlledVoltageSource(Unit, Unit, ElementType),
+    CurrentControlledCurrentSource(Unit, Unit, ElementType),
+    VoltageControlledCurrentSource(Unit, Unit, ElementType),
+    VoltageControlledVoltageSource(Unit, Unit, ElementType),
+    BJT(Unit, Bias, ElementType),
+    FET(Unit, Bias, ElementType),
+    MOSFET(Unit, Bias, ElementType),
+    Diode(Unit, Bias, ElementType),
+    OpAmp(Unit, ElementType),
+    IC(MTETerminalPair, Vec<Node>),
 }
 
 impl ElementFunction {
@@ -184,6 +213,75 @@ impl ElementFunction {
     pub fn from(s: &str) -> Self {
         let (func, props) = Self::get_function_and_properties(s);
         let props_parsed = Self::parse_equal_props(&props);
+
+        match func.trim().to_lowercase().as_str() {
+            "resistor" => {
+                let unit_opt = props_parsed.filter_for("resistance");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_ohm() {
+                                true => u,
+                                false => panic!("Unit is not ohm"),
+                            }
+                        },
+                        None => panic!("No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("No unit specified for resistor");
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::Resistor(unit, ty)
+            },
+            "capacitor" => {
+                let unit_opt = props_parsed.filter_for("capacitance");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_farad() {
+                                true => u,
+                                false => panic!("Unit is not farad"),
+                            }
+                        },
+                        None => panic!("No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("No unit specified for resistor");
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::Resistor(unit, ty)
+            }
+        }
     }
 }
 
@@ -207,7 +305,6 @@ impl ElementType {
 pub struct Element {
     terminal: Terminal,
     func: ElementFunction,
-    ty: ElementType,
     termty: ElementTerminal,
 }
 
@@ -389,6 +486,62 @@ impl Unit {
             "A" | "amps" | "Amps" => Self::Amps(value, multiplier),
             "W" | "Watts" | "watts" => Self::Watts(value, multiplier),
             _ => panic!("The given unit is not SI or wrong: {}", unit_str),
+        }
+    }
+
+    pub fn is_ohm(&self) -> bool {
+        match self {
+            Self::Ohm(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_henry(&self) -> bool {
+        match self {
+            Self::Henry(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_farad(&self) -> bool {
+        match self {
+            Self::Farad(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_mho(&self) -> bool {
+        match self {
+            Self::Mho(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_hertz(&self) -> bool {
+        match self {
+            Self::Hertz(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_amps(&self) -> bool {
+        match self {
+            Self::Amps(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_volts(&self) -> bool {
+        match self {
+            Self::Volts(_, _) => true,
+            _ => false,
+        }
+    }     
+
+    pub fn is_watts(&self) -> bool {
+        match self {
+            Self::Watts(_, _) => true,
+            _ => false,
         }
     }
 }
