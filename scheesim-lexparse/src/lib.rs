@@ -1,99 +1,104 @@
 use std::collections::HashMap;
 
 pub enum EqualProperty {
-    Bias(String),
-    Type(String),
-    Resistance(String),
-    Conductance(String),
-    Capacitance(String),
-    Inductance(String),
-    Voltage(String),
-    Current(String),
-    Power(String),
-    Frequency(String),
-    MTETerminalPair(String, String),
+    Bias(String, usize),
+    Type(String, usize),
+    Resistance(String, usize),
+    Conductance(String, usize),
+    Capacitance(String, usize),
+    Inductance(String, usize),
+    Voltage(String, usize),
+    Current(String, usize),
+    Power(String, usize),
+    Frequency(String, usize),
+    MTETerminalPair(String, String, usize),
 }
 
 impl EqualProperty {
-    pub fn from(s: &str) -> Self {
-        let (key, value) = s.split_once("=").expect(format!("Error with key-value equal property: {s} ").as_str());
+    pub fn from(s: &str, line_num: usize) -> Self {
+        let (key, value) = s.split_once("=").expect(format!("Line `{line_num}`: Error with key-value equal property: {s} ").as_str());
 
         match key.trim().to_lowercase().as_str() {
-            "bias" => Self::Bias(value.trim().to_string()),
-            "type" => Self::Type(value.trim().to_string()),
-            "resistance" => Self::Resistance(value.trim().to_string()),
-            "conductance" => Self::Conductance(value.trim().to_string()),
-            "capacitance" => Self::Capacitance(value.trim().to_string()),
-            "inductance" => Self::Inductance(value.trim().to_string()),
-            "voltage" => Self::Voltage(value.trim().to_string()),
-            "current" => Self::Current(value.trim().to_string()),
-            "power" => Self::Power(value.trim().to_string()),
-            "frequency" => Self::Frequency(value.trim().to_string()),
-            _ => Self::MTETerminalPair(key.trim().to_string(), value.trim().to_string()),
+            "bias" => Self::Bias(value.trim().to_string(), line_num),
+            "type" => Self::Type(value.trim().to_string(), line_num),
+            "resistance" => Self::Resistance(value.trim().to_string(), line_num),
+            "conductance" => Self::Conductance(value.trim().to_string(), line_num),
+            "capacitance" => Self::Capacitance(value.trim().to_string(), line_num),
+            "inductance" => Self::Inductance(value.trim().to_string(), line_num),
+            "voltage" => Self::Voltage(value.trim().to_string(), line_num),
+            "current" => Self::Current(value.trim().to_string(), line_num),
+            "power" => Self::Power(value.trim().to_string(), line_num),
+            "frequency" => Self::Frequency(value.trim().to_string(), line_num),
+            _ => Self::MTETerminalPair(key.trim().to_string(), value.trim().to_string(), line_num),
         }
     }
 
     pub fn to_unit(&self) -> Option<Unit> {
         match self {
-            EqualProperty::Bias(_) => None,
-            EqualProperty::Type(_) => None,
-            EqualProperty::Resistance(value) => Some(Unit::from(value)),
-            EqualProperty::Conductance(value) => Some(Unit::from(value)),
-            EqualProperty::Capacitance(value) => Some(Unit::from(value)),
-            EqualProperty::Inductance(value) => Some(Unit::from(value)),
-            EqualProperty::Voltage(value) => Some(Unit::from(value)),
-            EqualProperty::Current(value) => Some(Unit::from(value)),
-            EqualProperty::Power(value) => Some(Unit::from(value)),
-            EqualProperty::Frequency(value) => Some(Unit::from(value)),
-            EqualProperty::MTETerminalPair(_, _) => None,
+            EqualProperty::Bias(_, _) => None,
+            EqualProperty::Type(_, _) => None,
+            EqualProperty::Resistance(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Conductance(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Capacitance(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Inductance(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Voltage(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Current(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Power(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::Frequency(value, line_num) => Some(Unit::from(value, *line_num)),
+            EqualProperty::MTETerminalPair(_, _, _) => None,
         }
     }
 
     pub fn to_bias(&self) -> Option<Bias> {
         match self {
-            EqualProperty::Bias(value) => Some(Bias::from(value)),
+            EqualProperty::Bias(value, line_num) => Some(Bias::from(value, *line_num)),
             _ => None,
         }
     }
 
     pub fn to_type(&self) -> Option<ElementType> {
         match self {
-            EqualProperty::Type(value) => Some(ElementType::from(value)),
+            EqualProperty::Type(value, line_num) => Some(ElementType::from(value, *line_num)),
             _ => None,
         }
     }
 
-    pub fn to_terminal_pair(&self) -> Option<MTETerminalPair> {
+    pub fn to_terminal_mapping(&self) -> Option<MTETerminalPair> {
         match self {
-            EqualProperty::MTETerminalPair(connector, connectee) => Some(MTETerminalPair::from(connector, connectee)),
+            EqualProperty::MTETerminalPair(connector, connectee, _) => Some(MTETerminalPair::from(connector, connectee)),
             _ => None,
         }   
     }
 
     pub fn get_key(&self) -> &str {
         match self {
-            EqualProperty::Bias(_) => "bias",
-            EqualProperty::Type(_) => "type",
-            EqualProperty::Resistance(_) => "resistance",
-            EqualProperty::Conductance(_) => "conductance",
-            EqualProperty::Capacitance(_) => "capacitance",
-            EqualProperty::Inductance(_) => "inductance",
-            EqualProperty::Voltage(_) => "voltage",
-            EqualProperty::Current(_) => "current",
-            EqualProperty::Power(_) => "power",
-            EqualProperty::Frequency(_) => "frequency",
-            EqualProperty::MTETerminalPair(_, _) => "pair",
+            EqualProperty::Bias(_, _) => "bias",
+            EqualProperty::Type(_, _) => "type",
+            EqualProperty::Resistance(_, _) => "resistance",
+            EqualProperty::Conductance(_, _) => "conductance",
+            EqualProperty::Capacitance(_, _) => "capacitance",
+            EqualProperty::Inductance(_, _) => "inductance",
+            EqualProperty::Voltage(_, _) => "voltage",
+            EqualProperty::Current(_, _) => "current",
+            EqualProperty::Power(_, _) => "power",
+            EqualProperty::Frequency(_, _) => "frequency",
+            EqualProperty::MTETerminalPair(_, _, _) => "mapping",
         }
     }
 }
 
 pub trait FilterList<T, U> {
     fn filter_for(&self, key: T) -> Option<&U>;
+    fn filter_for_mult(&self, key: T) -> Vec<&U>;
 }
 
 impl FilterList<&'static str, EqualProperty> for Vec<EqualProperty> {
     fn filter_for(&self, key: &str) -> Option<&EqualProperty> {
         self.iter().filter(|itm| itm.get_key() == key).next()
+    }
+
+    fn filter_for_mult(&self, key: &'static str) -> Vec<&EqualProperty> {
+        self.iter().filter(|itm| itm.get_key() == key).collect()
     }
 }
 
@@ -123,7 +128,7 @@ impl PadToken {
             "space" => Self::Space(num),
             "tab" => Self::Tab(num),
             _ => panic!(
-                "Unspecified padding token; must either be `tab` or `space` (case-insensetive)"
+                "Unspecified padding token at first line; must either be `tab` or `space` (case-insensetive)"
             ),
         }
     }
@@ -152,7 +157,7 @@ pub enum Bias {
 }
 
 impl Bias {
-    pub fn from(s: &str) -> Self {
+    pub fn from(s: &str, line_num: usize) -> Self {
         match s.to_lowercase().as_str() {
             "npn" => Self::NPN,
             "pnp" => Self::PNP,
@@ -160,7 +165,7 @@ impl Bias {
             "neg" | "negative" => Self::Negative,
             "np" => Self::NP,
             "pn" => Self::PN,
-            _ => panic!("Wrong bias type: {}", s),
+            _ => panic!("Line `{line_num}`: Wrong bias type: {s}"),
         }   
     }
 }
@@ -181,38 +186,33 @@ impl MTETerminalPair {
 
 pub enum ElementFunction {
     Resistor(Unit, ElementType),
+    Conductor(Unit, ElementType),
     Capacitor(Unit, ElementType),
     Inductor(Unit, ElementType),
-    SineSource(Unit),
-    VoltageSource(Unit, ElementType),
-    CurrentSource(Unit, ElementType),
-    CurrentControlledVoltageSource(Unit, Unit, ElementType),
-    CurrentControlledCurrentSource(Unit, Unit, ElementType),
-    VoltageControlledCurrentSource(Unit, Unit, ElementType),
-    VoltageControlledVoltageSource(Unit, Unit, ElementType),
+    AcSource(Unit),
+    DcSource(Option<Unit>, Option<Unit>, ElementType),
     BJT(Unit, Bias, ElementType),
     FET(Unit, Bias, ElementType),
     MOSFET(Unit, Bias, ElementType),
     Diode(Unit, Bias, ElementType),
-    OpAmp(Unit, ElementType),
-    IC(MTETerminalPair, Vec<Node>),
+    MTE(MTETerminalPair),
 }
 
 impl ElementFunction {
-    fn get_function_and_properties(s: &str) -> (String, String) {
-        let (func, prop) = s.split_once("<").expect("Error with element input");
+    fn get_function_and_properties(s: &str, line_num: usize) -> (String, String) {
+        let (func, prop) = s.split_once("<").expect(format!("Line `{line_num}`: Error with element input, must be in form ElementComponent<properties_name=properties>").as_str());
         let prop_sans_right_angle = prop.replace(">", "");
 
         (func.to_string(), prop_sans_right_angle)
     }
     
-    fn parse_equal_props(s: &str) -> Vec<EqualProperty> {
-        s.split(",").map(|ss| EqualProperty::from(&ss.trim())).collect()
+    fn parse_equal_props(s: &str, line_num: usize) -> Vec<EqualProperty> {
+        s.split(",").map(|ss| EqualProperty::from(&ss.trim(), line_num)).collect()
     }
 
-    pub fn from(s: &str) -> Self {
-        let (func, props) = Self::get_function_and_properties(s);
-        let props_parsed = Self::parse_equal_props(&props);
+    pub fn from(s: &str, line_num: usize) -> Self {
+        let (func, props) = Self::get_function_and_properties(s, line_num);
+        let props_parsed = Self::parse_equal_props(&props, line_num);
 
         match func.trim().to_lowercase().as_str() {
             "resistor" => {
@@ -227,15 +227,15 @@ impl ElementFunction {
                         Some(u) => {
                             match u.is_ohm() {
                                 true => u,
-                                false => panic!("Unit is not ohm"),
+                                false => panic!("Line `{line_num}`: Unit is not ohm"),
                             }
                         },
-                        None => panic!("No unit found"),
+                        None => panic!("Line `{line_num}`: No unit found"),
                     };
 
                     u                    
                 } else {
-                    panic!("No unit specified for resistor");
+                    panic!("Line `{line_num}`: No unit specified for resistor");
                 };
 
                 let ty = match ty_opt {
@@ -247,6 +247,39 @@ impl ElementFunction {
                 };
 
                 Self::Resistor(unit, ty)
+            },
+            "conductor" => {
+                let unit_opt = props_parsed.filter_for("conductance");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_mho() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not mho/siemens"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for conductor");
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::Conductor(unit, ty)
             },
             "capacitor" => {
                 let unit_opt = props_parsed.filter_for("capacitance");
@@ -260,15 +293,15 @@ impl ElementFunction {
                         Some(u) => {
                             match u.is_farad() {
                                 true => u,
-                                false => panic!("Unit is not farad"),
+                                false => panic!("Line `{line_num}`: Unit is not farad"),
                             }
                         },
-                        None => panic!("No unit found"),
+                        None => panic!("Line `{line_num}`: No unit found"),
                     };
 
                     u                    
                 } else {
-                    panic!("No unit specified for resistor");
+                    panic!("Line `{line_num}`: No unit specified for capacitor");
                 };
 
                 let ty = match ty_opt {
@@ -279,7 +312,366 @@ impl ElementFunction {
                     None => ElementType::Linear,
                 };
 
-                Self::Resistor(unit, ty)
+                Self::Capacitor(unit, ty)
+            },
+            "inductor" => {
+                let unit_opt = props_parsed.filter_for("inductance");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_henry() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not henry"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for inductor");
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::Inductor(unit, ty)
+            },
+            "acsource" => {
+                let unit_opt = props_parsed.filter_for("frequency");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_hertz() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not hertz"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for sine/ac source");
+                };
+
+               
+                Self::AcSource(unit)
+            },
+            "dcsource" => {
+                let voltages = props_parsed.filter_for_mult("voltage");
+                let currents = props_parsed.filter_for_mult("currents");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let (unit_1, unit_2) = if voltages.len() == 1 && currents.len() == 0 {
+                    let solo_voltage = voltages[0].to_unit();
+                    
+                    let (u1, u2) = match solo_voltage {
+                        Some(v) => match v.voltage_solos() {
+                            true => (Some(v), None),
+                            false => panic!("Line `{line_num}`: Single voltage must be <solo> of Volt unit"),
+                        },
+                        None => panic!("Line `{line_num}`: Voltage/Current undefined"),
+                    };
+
+                    (u1, u2)
+                } else if voltages.len() == 0 && currents.len() == 1 {
+                    let solo_current = currents[0].to_unit();
+                    
+                    let (u1, u2) = match solo_current {
+                        Some(i) => match i.current_solos() {
+                            true => (None, Some(i)),
+                            false => panic!("Line `{line_num}`: Single current must be <solo> of Amper unit"),
+                        },
+                        None => panic!("Line `{line_num}`: Voltage/Current undefined"),
+                    };
+
+                    (u1, u2)
+                } else if voltages.len() == 2 && currents.len() == 0 {
+                    let mut iter = voltages.iter();
+
+                    let (voltage_1, voltage_2) = (iter.next().unwrap(), iter.next().unwrap());
+                    let (voltage_unit_1, voltage_unit_2) = (voltage_1.to_unit(), voltage_2.to_unit());
+
+                    if voltage_unit_1.is_none() && voltage_unit_2.is_none() {
+                        panic!("Line `{line_num}`: No voltages exist");
+                    }
+
+                    let (v1, v2) = (voltage_unit_1.unwrap(), voltage_unit_2.unwrap());
+
+                    if !(v1.is_volts() && v2.is_amps()) {
+                        panic!("Line `{line_num}`: Two voltages must have unit Volt");
+                    }
+
+                    let (v1u, v2u) = if (v1.voltage_controls() && v2.voltage_depends()) || (v1.voltage_depends() && v2.voltage_controls()) {
+                        match v1.voltage_controls() {
+                            true => (Some(v1), Some(v2)),
+                            false => (Some(v2), Some(v1))
+                        }
+                    }  else {
+                        panic!("Line `{line_num}`: When two voltages, one must be controller, and the other dependent")
+                    };
+
+                    (v1u, v2u)
+                } else if voltages.len() == 0 && currents.len() == 2 {
+                    let mut iter = currents.iter();
+
+                    let (current_1, current_2) = (iter.next().unwrap(), iter.next().unwrap());
+                    let (current_unit_1, current_unit_2) = (current_1.to_unit(), current_2.to_unit());
+
+                    if current_unit_1.is_none() && current_unit_2.is_none() {
+                        panic!("Line `{line_num}`: No currents exist");
+                    }
+
+                    let (i1, i2) = (current_unit_1.unwrap(), current_unit_2.unwrap());
+
+                    if !(i1.is_amps() && i2.is_amps()) {
+                        panic!("Line `{line_num}`: Two currents must be of unit Amps");
+                    }
+
+                    let (i1u, i2u) = if (i1.current_controls() && i2.current_depends()) || (i1.current_depends() && i2.current_controls()) {
+                        match i1.current_controls() {
+                            true => (Some(i1), Some(i2)),
+                            false => (Some(i2), Some(i1))
+                        }
+                    }  else {
+                        panic!("Line `{line_num}`: When two currents, one must be controller, and the other dependent")
+                    };
+
+                    (i1u, i2u)
+                } else if voltages.len() == 1 && currents.len() == 1 {
+                    let (v, i) = (voltages.iter().next().unwrap(), currents.iter().next().unwrap());
+
+                    let (vu, iu) = (v.to_unit().unwrap(), i.to_unit().unwrap());
+
+                    if !(vu.is_volts() && iu.is_amps()) {
+                        panic!("Line `{line_num}`:  Voltage must be of unit volts and current must be of unit amps")
+                    }
+
+                    let (u1, u2) = match vu.voltage_controls() {
+                        true => match iu.current_depends() {
+                            true => (Some(vu), Some(iu)),
+                            false => panic!("Line `{line_num}`: If voltage controls, current must depent"),
+                        },
+                        false => match iu.current_controls() {
+                            true => (Some(iu), Some(vu)),
+                            false => panic!("Line `{line_num}`: Either voltage, or current, should control and ther other must be dependent"),
+                        }
+                    };
+
+                    (u1, u2)
+                } else {
+                    panic!("Line `{line_num}`: Wrong voltage/current units, must have one solo voltage/current, or two controller/dependent voltage/current or two controller/dependent current/voltage")
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+
+                Self::DcSource(unit_1, unit_2, ty)
+            },
+            "bjt" | "bipolarjunction" | "bipolarjunctiontransistor" => {
+                let unit_opt = props_parsed.filter_for("power");
+                let bias_opt = props_parsed.filter_for("bias");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_watts() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not watts"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for BJT");
+                };
+
+                let bias = match bias_opt {
+                    Some(b) => match b.to_bias() {
+                        Some(bias) => bias,
+                        None => panic!("Line `{line_num}`: Error getting bias BJT"),
+                    },
+                    None => panic!("Line `{line_num}`: Bias not specified for BJT")
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::BJT(unit, bias, ty)
+            },
+            "fet" | "fieldeffect" | "fieldeffecttransistor" => {
+                let unit_opt = props_parsed.filter_for("power");
+                let bias_opt = props_parsed.filter_for("bias");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_watts() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not watts"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for FET");
+                };
+
+                let bias = match bias_opt {
+                    Some(b) => match b.to_bias() {
+                        Some(bias) => bias,
+                        None => panic!("Line `{line_num}`: Error getting bias FET"),
+                    },
+                    None => panic!("Line `{line_num}`: Bias not specified for FET")
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::FET(unit, bias, ty)
+            },
+            "mosfet" | "mosfieldeffect" | "mosfieldeffecttransistor" => {
+                let unit_opt = props_parsed.filter_for("power");
+                let bias_opt = props_parsed.filter_for("bias");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_watts() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not watts"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for MOSFET");
+                };
+
+                let bias = match bias_opt {
+                    Some(b) => match b.to_bias() {
+                        Some(bias) => bias,
+                        None => panic!("Line `{line_num}`: Error getting bias MOSFET"),
+                    },
+                    None => panic!("Line `{line_num}`: Bias not specified for MOSFET")
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::BJT(unit, bias, ty)
+            },
+            "diode" => {
+                let unit_opt = props_parsed.filter_for("power");
+                let bias_opt = props_parsed.filter_for("bias");
+                let ty_opt = props_parsed.filter_for("type");
+
+                let unit = if unit_opt.is_some() {
+                    let unit_prop = unit_opt.unwrap();
+                    let unit = unit_prop.to_unit();
+
+                    let u = match unit {
+                        Some(u) => {
+                            match u.is_watts() {
+                                true => u,
+                                false => panic!("Line `{line_num}`: Unit is not watts"),
+                            }
+                        },
+                        None => panic!("Line `{line_num}`: No unit found"),
+                    };
+
+                    u                    
+                } else {
+                    panic!("Line `{line_num}`: No unit specified for diode");
+                };
+
+                let bias = match bias_opt {
+                    Some(b) => match b.to_bias() {
+                        Some(bias) => bias,
+                        None => panic!("Line `{line_num}`: Error getting bias diode"),
+                    },
+                    None => panic!("Line `{line_num}`: Bias not specified for diode")
+                };
+
+                let ty = match ty_opt {
+                    Some(eq) => match eq.to_type() {
+                        Some(t) => t,
+                        None => ElementType::Linear,
+                    },
+                    None => ElementType::Linear,
+                };
+
+                Self::BJT(unit, bias, ty)
+            },
+            "mte" | "multiterminalelement" | "multiterminaal" => {
+                let opt_node_mapping = props_parsed.filter_for("mapping");
+
+                let mapping = match opt_node_mapping {
+                    Some(m) => match m.to_terminal_mapping() {
+                        Some(mapping) => mapping,
+                        None => panic!("Line `{line_num}`: Failed to get mapping for MTE"),
+                    },
+                    None => panic!("Line `{line_num}`: All MTEs need terminal mapping")
+                };
+
+                Self::MTE(mapping)
+            },
+            _ => {
+                panic!("Line `{line_num}`: Unknown element, consult the documentation for a full list of allowed element and element names");
             }
         }
     }
@@ -292,12 +684,12 @@ pub enum ElementType {
 }
 
 impl ElementType {
-    pub fn from(value: &str) -> Self {
+    pub fn from(value: &str, line_num: usize) -> Self {
         match value.to_lowercase().as_str() {
             "linear" => Self::Linear,
             "nonlinear" => Self::NonLinear,
             "dynamic" => Self::Dynamic,
-            _ => panic!("Wrong element type given: {value}")
+            _ => panic!("Line `{line_num}`: Wrong element type given: {value}")
         }
     }
 }
@@ -422,19 +814,48 @@ impl UnitMultiplier {
     }
 }
 
+pub enum ControlStat {
+    Controller,
+    Dependent,
+    Solo
+}
+
+impl  ControlStat {
+    pub fn is_controller(&self) -> bool {
+        match self {
+            Self::Controller => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_dependent(&self) -> bool {
+        match self {
+            Self::Dependent => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_solo(&self) -> bool {
+        match self {
+            Self::Solo => true,
+            _ => false,
+        }
+    }
+}
+
 pub enum Unit {
     Henry(f64, UnitMultiplier),
     Farad(f64, UnitMultiplier),
     Ohm(f64, UnitMultiplier),
     Mho(f64, UnitMultiplier),
     Hertz(f64, UnitMultiplier),
-    Amps(f64, UnitMultiplier),
-    Volts(f64, UnitMultiplier),
+    Amps(f64, UnitMultiplier, ControlStat),
+    Volts(f64, UnitMultiplier, ControlStat),
     Watts(f64, UnitMultiplier),
 }
 
 impl Unit {
-    fn seperate_num_from_unit(s: &str) -> (String, String, String) {
+    fn seperate_num_from_unit(s: &str, line_num: usize) -> (String, String, String) {
         let mut quantitiy = String::new();
         let mut multiplier = String::new();
         let mut unit = String::new();
@@ -461,29 +882,33 @@ impl Unit {
                     unit.push(ch);
                 }
             } else {
-                panic!("Illegal character in quantity, neither unit, multiplier, nor number (with or without decimal). Illegal character is: {}", ch);
+                panic!("Line `{line_num}`: Illegal character in quantity, neither unit, multiplier, nor number (with or without decimal). Illegal character is: {}", ch);
             }
         }
 
         (quantitiy, multiplier, unit)
     }
 
-    pub fn from(s: &str) -> Self {
-        let (value_str, mult_str, unit_str) = Self::seperate_num_from_unit(&s);
+    pub fn from(s: &str, line_num: usize) -> Self {
+        let (value_str, mult_str, unit_str) = Self::seperate_num_from_unit(&s, line_num);
 
         let value: f64 = value_str
             .parse()
-            .expect(format!("Error parsing value: {value_str}").as_str());
+            .expect(format!("Line `{line_num}`: Error parsing value: {value_str}").as_str());
         let multiplier = UnitMultiplier::from(&mult_str);
 
-        match unit_str.as_str() {
-            "H" => Self::Henry(value, multiplier),
-            "F" => Self::Farad(value, multiplier),
-            "Ohm" | "ohm" | "Ω" => Self::Ohm(value, multiplier),
-            "Mho" | "mho" | "ʊ" => Self::Mho(value, multiplier),
-            "Hz" | "hertz" | "hz" | "Hertz" => Self::Hertz(value, multiplier),
-            "v" | "volts" | "Volts" => Self::Volts(value, multiplier),
-            "A" | "amps" | "Amps" => Self::Amps(value, multiplier),
+        match unit_str.to_lowercase().as_str() {
+            "h" => Self::Henry(value, multiplier),
+            "f" => Self::Farad(value, multiplier),
+            "ohm" | "Ω" => Self::Ohm(value, multiplier),
+            "mho" | "ʊ" | "s" | "siemens" => Self::Mho(value, multiplier),
+            "hertz" | "hz" => Self::Hertz(value, multiplier),
+            "v" | "volts" | "volt" => Self::Volts(value, multiplier, ControlStat::Solo),
+            "A" | "amps" | "amp" => Self::Amps(value, multiplier, ControlStat::Solo),
+            "v<dep>" | "volts<dep>" | "volt<dep>" => Self::Volts(value, multiplier, ControlStat::Dependent),
+            "A<dep>" | "amps<dep>" | "amp<dep>" => Self::Amps(value, multiplier, ControlStat::Dependent),
+            "v<ctrl>" | "volts<ctrl>" | "volt<ctrl>" => Self::Volts(value, multiplier, ControlStat::Controller),
+            "A<ctrl>" | "amps<ctrl>" | "amp<ctrl>" => Self::Amps(value, multiplier, ControlStat::Controller),
             "W" | "Watts" | "watts" => Self::Watts(value, multiplier),
             _ => panic!("The given unit is not SI or wrong: {}", unit_str),
         }
@@ -526,14 +951,14 @@ impl Unit {
 
     pub fn is_amps(&self) -> bool {
         match self {
-            Self::Amps(_, _) => true,
+            Self::Amps(_, _, _) => true,
             _ => false,
         }
     }
 
     pub fn is_volts(&self) -> bool {
         match self {
-            Self::Volts(_, _) => true,
+            Self::Volts(_, _, _) => true,
             _ => false,
         }
     }     
@@ -541,6 +966,48 @@ impl Unit {
     pub fn is_watts(&self) -> bool {
         match self {
             Self::Watts(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn current_controls(&self) -> bool {
+        match self {
+            Self::Amps(_, _, b) => b.is_controller(),
+            _ => false,
+        }
+    }
+
+    pub fn voltage_controls(&self) -> bool {
+        match self {
+            Self::Volts(_, _, b) => b.is_controller(),
+            _ => false,
+        }
+    }
+
+    pub fn current_depends(&self) -> bool {
+        match self {
+            Self::Amps(_, _, b) => b.is_dependent(),
+            _ => false,
+        }
+    }
+
+    pub fn voltage_depends(&self) -> bool {
+        match self {
+            Self::Volts(_, _, b) => b.is_dependent(),
+            _ => false,
+        }
+    }
+
+    pub fn current_solos(&self) -> bool {
+        match self {
+            Self::Amps(_, _, b) => b.is_solo(),
+            _ => false,
+        }
+    }
+
+    pub fn voltage_solos(&self) -> bool {
+        match self {
+            Self::Volts(_, _, b) => b.is_solo(),
             _ => false,
         }
     }
