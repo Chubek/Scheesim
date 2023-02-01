@@ -172,17 +172,12 @@ impl Bias {
 pub struct MTETerminalPair {
     connector: String,
     connectee: String,
-    nodes: Vec<Node>
 }
 
 
 impl MTETerminalPair {
     pub fn from(connector: &String, connectee: &String) -> Self {
-        Self { connector: connector.clone(), connectee: connectee.clone(), nodes: vec![] }
-    }
-
-    pub fn add_node(&mut self, node: Node) {
-        self.nodes.push(node);
+        Self { connector: connector.clone(), connectee: connectee.clone() }
     }
 }
 
@@ -700,10 +695,10 @@ impl Element {
             true => {
                 let name = name.replace("from", "").trim().to_string();
                 let vec_node_str: Vec<Node> = s_component
-                                                                    .split("+")
-                                                                    .map(|s| s.trim())
-                                                                    .map(|s| s.into())
-                                                                    .collect();
+                                                        .split("+")
+                                                        .map(|s| s.trim())
+                                                        .map(|s| Node::from(s, padder))
+                                                        .collect();
 
                 Self { name, component: None, terminal, subnodes: Some(vec_node_str) }
                                                             
@@ -929,13 +924,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn from(s: &str) -> Self {
-        todo!()
-    }
-}
-
-impl From<&str> for Node {
-    fn from(value: &str) -> Self {
+    pub fn from(s: &str, padder: &PadToken) -> Self {
         todo!()
     }
 }
