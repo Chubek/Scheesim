@@ -695,32 +695,117 @@ impl ElementType {
 }
 
 pub struct Element {
-    terminal: Terminal,
     func: ElementFunction,
-    termty: ElementTerminal,
+    terminal: ElementTerminal,
 }
 
-pub enum Terminal {
+pub enum TerminalConnection {
     Named(String),
     External,
     Ground,
     InternalGround,
 }
 
+impl TerminalConnection {
+    pub fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "ext" | "external" | "extrn" | "extern" => Self::External,
+            "grnd" | "ground" | "grd" | "gr" => Self::Ground,
+            "igrnd" | "iground" | "igrd" | "igr" | "internalgrnd" | "internalground" => Self::InternalGround,
+            _ => {
+                match s.contains(">") | s.contains("<") | s.contains(";") {
+                    true => panic!("Connection name {s} contains illegal character (>, < or ;)"),
+                    false => Self::Named(s.to_lowercase())
+                }
+            },
+        }
+    }
+}
+
+pub trait FromEqualSeperatedSeq {
+    fn from_eq_sep_conn(&mut self, v: &Vec<&str>);
+}
+
+impl FromEqualSeperatedSeq for HashMap<String, TerminalConnection> {
+    fn from_eq_sep_conn(&mut self, v: &Vec<&str>) {
+        v
+         .into_iter()
+         .for_each(|s| {
+            if !s.contains("=") {
+                panic!("Item {s} must be equal-sign-seperated!");
+            }
+
+            let (key, value) = s.split_once("=").expect(format!("Error splitting `{s}` by equal sign").as_str());
+
+            self.insert(key.to_string(), TerminalConnection::from(value));            
+         });
+    }
+}
+
 pub enum ElementTerminal {
-    BiTerminal(Terminal, Terminal),
-    TriTerminal(Terminal, Terminal, Terminal),
-    MultiTerminal(HashMap<Terminal, Terminal>),
+    BiTerminal(TerminalConnection, TerminalConnection),
+    TriTerminal(TerminalConnection, TerminalConnection, TerminalConnection),
+    MultiTerminal(HashMap<String, TerminalConnection>),
 }
 
 pub enum NodeTerminal {
-    BiTerminal(Terminal, Terminal),
-    TriTerminal(Terminal, Terminal),
+    BiTerminal(TerminalConnection, TerminalConnection),
+    TriTerminal(TerminalConnection, TerminalConnection),
+}
+
+impl ElementTerminal {
+    pub fn from(s: &str, line_num: usize) -> Self {
+        let rem_right_square = s.replace("]", "");
+        let (ty, conns) = rem_right_square.split_once("[").expect(format!("Line `{line_num}`: Terminal listing must be in form <type>[*conns]").as_str());
+
+        let conns_split = conns.split(";").map(|sp| sp.trim()).collect::<Vec<_>>();
+
+        match ty.to_lowercase().as_str() {
+            "bt" | "biterminal" | "biterm" => {
+                let (conn1, conn2) = match conns_split.len() {
+                    2 => {
+                        let mut iter = conns_split.into_iter();
+                        let (conn_str1, conn_str2) = (iter.next().unwrap(), iter.next().unwrap());
+                        let (conn1, conn2) = (TerminalConnection::from(conn_str1), TerminalConnection::from(conn_str2));
+                        (conn1, conn2)
+                    },
+                    _ => panic!("Line `{line_num}`: BiTerminal connection needs exactly 2 connections"),
+                };
+
+                Self::BiTerminal(conn1, conn2)
+            },
+            "tt" | "triterminal" | "triterm" => {
+                let (conn1, conn2, conn3) = match conns_split.len() {
+                    3 => {
+                        let mut iter = conns_split.into_iter();
+                        let (conn_str1, conn_str2, conn_str3) = (iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap());
+                        let (conn1, conn2, conn3) = (TerminalConnection::from(conn_str1), TerminalConnection::from(conn_str2), TerminalConnection::from(conn_str3));
+
+                        (conn1, conn2, conn3)
+                    },
+                    _ => panic!("Line `{line_num}`: TriTerminal connection needs exactly 3 connections"),
+                };
+                
+                Self::TriTerminal(conn1, conn2, conn3)
+            },
+            "mt" | "multiterminal" | "multiterm" => {
+                match conns_split.len() != 0 {
+                    true => {
+                        let mut hm = HashMap::<String, TerminalConnection>::new();
+                        hm.from_eq_sep_conn(&conns_split);
+
+                        Self::MultiTerminal(hm)
+                    },
+                    false => panic!("Line `{line_num}`: MultiTerminal connections must be expressed within the component")
+                }
+            },
+            _ => panic!("Line `{line_num}`: Wrong terminal connection type, please consult documentation for a list of allowed terminal connection types")
+        }
+    }
 }
 
 pub struct Node {
-    terminal: Terminal,
-    termty: NodeTerminal,
+    terminal: NodeTerminal,
     elements: Vec<Element>,
 }
 
