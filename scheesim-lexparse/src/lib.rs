@@ -748,10 +748,96 @@ pub enum ElementTerminal {
     MultiTerminal(HashMap<String, TerminalConnection>),
 }
 
-pub enum NodeTerminal {
-    BiTerminal(TerminalConnection, TerminalConnection),
-    TriTerminal(TerminalConnection, TerminalConnection),
+pub struct NodeTerminal {
+    conns_in: Option<Vec<TerminalConnection>>,
+    conns_out: Option<Vec<TerminalConnection>>,
 }
+
+impl NodeTerminal {
+    pub fn from(s: &str, line_num: usize) -> Self {
+        let replaced_double_right_angle = s.replace(">>", "");
+
+        if !(replaced_double_right_angle.to_lowercase().contains("in") && replaced_double_right_angle.contains("out")) {
+            panic!("Line `{line_num}`: Node connections must have either in, out or both");
+        }
+
+        let mut split = replaced_double_right_angle.split(";");
+
+        enum InOut {
+            In(Vec<TerminalConnection>),
+            Out(Vec<TerminalConnection>),
+        }
+
+        impl InOut {
+            pub fn is_in(&self) -> bool {
+                match self {
+                    Self::In(_) => true,
+                    Self::Out(_) => false,
+                }
+            }
+
+            pub fn unwrap(self) -> Vec<TerminalConnection> {
+                match self {
+                    Self::In(v) => v,
+                    Self::Out(v) => v,
+                }
+            }
+        }
+
+        let (conns_in, conns_out) = match split.next() {
+            Some(s) => {
+                let conns = Self::parse_within_parans(s);
+
+                let first = match s.to_lowercase().contains("in") {
+                    true => InOut::In(conns),
+                    false => InOut::Out(conns),
+                };
+
+                let second = match split.next() {
+                    Some(s) => {
+                        let conns = Self::parse_within_parans(s);
+
+                        match s.to_lowercase().contains("in") {
+                            true => Some(InOut::In(conns)),
+                            false => Some(InOut::Out(conns)),
+                        }
+                    },
+                    None => None,
+                };
+                
+                let (fin, fout) = match second {
+                    Some(inout) => {
+                        if (inout.is_in() && first.is_in()) || (!inout.is_in() && !first.is_in()) {
+                            panic!("Line `{line_num}`: Samewise ins/outs");
+                        }
+
+                        if first.is_in() { (Some(first.unwrap()), Some(inout.unwrap())) } else { (Some(inout.unwrap()), Some(first.unwrap())) }
+                    },
+                    None => if first.is_in() { (Some(first.unwrap()), None) } else { (None, Some(first.unwrap())) }
+                };
+
+                (fin, fout)
+            },
+            None => panic!("Line `{line_num}`: At least one in or one out is required!")
+        };
+
+        Self { conns_in, conns_out }
+    }
+
+    fn parse_within_parans(s: &str) -> Vec<TerminalConnection> {
+        s
+          .replace("in", "")
+          .replace("out", "")
+          .replace("=", "")
+          .replace("(", "")
+          .replace(")", "")
+          .split(",")
+          .map(|ss| ss.trim())
+          .map(|ss| TerminalConnection::from(ss))
+          .collect()
+    }
+}
+
 
 impl ElementTerminal {
     pub fn from(s: &str, line_num: usize) -> Self {
