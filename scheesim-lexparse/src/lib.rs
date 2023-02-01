@@ -11,7 +11,6 @@ pub enum EqualProperty {
     Current(String, usize),
     Power(String, usize),
     Frequency(String, usize),
-    MTETerminalPair(String, String, usize),
 }
 
 impl EqualProperty {
@@ -29,7 +28,7 @@ impl EqualProperty {
             "current" => Self::Current(value.trim().to_string(), line_num),
             "power" => Self::Power(value.trim().to_string(), line_num),
             "frequency" => Self::Frequency(value.trim().to_string(), line_num),
-            _ => Self::MTETerminalPair(key.trim().to_string(), value.trim().to_string(), line_num),
+            _ => panic!("Line `{line_num}: Unknown quantity, consult documentation for allowed units`")
         }
     }
 
@@ -45,7 +44,6 @@ impl EqualProperty {
             EqualProperty::Current(value, line_num) => Some(Unit::from(value, *line_num)),
             EqualProperty::Power(value, line_num) => Some(Unit::from(value, *line_num)),
             EqualProperty::Frequency(value, line_num) => Some(Unit::from(value, *line_num)),
-            EqualProperty::MTETerminalPair(_, _, _) => None,
         }
     }
 
@@ -63,13 +61,7 @@ impl EqualProperty {
         }
     }
 
-    pub fn to_terminal_mapping(&self) -> Option<MTETerminalPair> {
-        match self {
-            EqualProperty::MTETerminalPair(connector, connectee, _) => Some(MTETerminalPair::from(connector, connectee)),
-            _ => None,
-        }   
-    }
-
+ 
     pub fn get_key(&self) -> &str {
         match self {
             EqualProperty::Bias(_, _) => "bias",
@@ -82,7 +74,6 @@ impl EqualProperty {
             EqualProperty::Current(_, _) => "current",
             EqualProperty::Power(_, _) => "power",
             EqualProperty::Frequency(_, _) => "frequency",
-            EqualProperty::MTETerminalPair(_, _, _) => "mapping",
         }
     }
 }
@@ -133,10 +124,17 @@ impl PadToken {
         }
     }
 
-    pub fn split_on(&self, s: String, stage_num: usize) -> Vec<String> {
+    pub fn split_on(&self, s: &str, stage_num: usize) -> Vec<String> {
         let seperator = self.produce_seperator(stage_num);
 
         s.split(&seperator).map(|s| s.to_string()).collect()
+    }
+
+    pub fn split_once(&self, s: &str, stage_num: usize) -> (String, String) {
+        let seperator = self.produce_seperator(stage_num);
+        let (s1, s2) = s.split_once(&seperator).expect("Error seperating once");
+    
+        (s1.to_string(), s2.to_string())
     }
 
     fn produce_seperator(&self, stage_num: usize) -> String {
@@ -174,17 +172,22 @@ impl Bias {
 pub struct MTETerminalPair {
     connector: String,
     connectee: String,
+    nodes: Vec<Node>
 }
 
 
 impl MTETerminalPair {
     pub fn from(connector: &String, connectee: &String) -> Self {
-        Self { connector: connector.clone(), connectee: connectee.clone() }
+        Self { connector: connector.clone(), connectee: connectee.clone(), nodes: vec![] }
+    }
+
+    pub fn add_node(&mut self, node: Node) {
+        self.nodes.push(node);
     }
 }
 
 
-pub enum ElementFunction {
+pub enum Component {
     Resistor(Unit, ElementType),
     Conductor(Unit, ElementType),
     Capacitor(Unit, ElementType),
@@ -195,10 +198,9 @@ pub enum ElementFunction {
     FET(Unit, Bias, ElementType),
     MOSFET(Unit, Bias, ElementType),
     Diode(Unit, Bias, ElementType),
-    MTE(MTETerminalPair),
 }
 
-impl ElementFunction {
+impl Component {
     fn get_function_and_properties(s: &str, line_num: usize) -> (String, String) {
         let (func, prop) = s.split_once("<").expect(format!("Line `{line_num}`: Error with element input, must be in form ElementComponent<properties_name=properties>").as_str());
         let prop_sans_right_angle = prop.replace(">", "");
@@ -657,19 +659,6 @@ impl ElementFunction {
 
                 Self::BJT(unit, bias, ty)
             },
-            "mte" | "multiterminalelement" | "multiterminaal" => {
-                let opt_node_mapping = props_parsed.filter_for("mapping");
-
-                let mapping = match opt_node_mapping {
-                    Some(m) => match m.to_terminal_mapping() {
-                        Some(mapping) => mapping,
-                        None => panic!("Line `{line_num}`: Failed to get mapping for MTE"),
-                    },
-                    None => panic!("Line `{line_num}`: All MTEs need terminal mapping")
-                };
-
-                Self::MTE(mapping)
-            },
             _ => {
                 panic!("Line `{line_num}`: Unknown element, consult the documentation for a full list of allowed element and element names");
             }
@@ -695,8 +684,45 @@ impl ElementType {
 }
 
 pub struct Element {
-    func: ElementFunction,
+    name: String,
+    component: Option<Component>,
     terminal: ElementTerminal,
+    subnodes: Option<Vec<Node>>,
+}
+
+impl Element {
+    pub fn from(s: &str, line_num: usize, padder: &PadToken) -> Self {
+        let (s_terminal, s_component) = padder.split_once(s, 2);
+    
+        let (name, terminal) = Self::parse_terminal(&s_terminal, line_num);
+
+        match &name[..2] == "(*)" {
+            true => {
+                let name = name.replace("from", "").trim().to_string();
+                let vec_node_str: Vec<Node> = s_component
+                                                                    .split("+")
+                                                                    .map(|s| s.trim())
+                                                                    .map(|s| s.into())
+                                                                    .collect();
+
+                Self { name, component: None, terminal, subnodes: Some(vec_node_str) }
+                                                            
+            },
+            false => {
+                let component = Component::from(&s_component, line_num);
+
+                Self { name: name.trim().to_string(), component: Some(component), terminal, subnodes: None }
+            },
+        }
+    }
+
+    fn parse_terminal(s_terminal: &str, line_num: usize) -> (String, ElementTerminal) {
+        let (name, s) = s_terminal.split_once("<").expect(format!("Line `{line_num}`: Element name should be in style name<MT/BT/TT[*connections]>").as_str());
+
+        let conns = ElementTerminal::from(s, line_num);
+
+        (s.to_string(), conns)
+    }
 }
 
 pub enum TerminalConnection {
@@ -888,11 +914,30 @@ impl ElementTerminal {
             _ => panic!("Line `{line_num}`: Wrong terminal connection type, please consult documentation for a list of allowed terminal connection types")
         }
     }
+
+    pub fn is_multiterminal(&self) -> bool {
+        match self {
+            Self::MultiTerminal(_) => true,
+            _ => false,
+        }
+    }
 }
 
 pub struct Node {
     terminal: NodeTerminal,
     elements: Vec<Element>,
+}
+
+impl Node {
+    pub fn from(s: &str) -> Self {
+        todo!()
+    }
+}
+
+impl From<&str> for Node {
+    fn from(value: &str) -> Self {
+        todo!()
+    }
 }
 
 pub enum UnitMultiplier {
