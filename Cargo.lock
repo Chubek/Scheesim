@@ -117,7 +117,6 @@ dependencies = [
  "scheesim-impl",
  "scheesim-lexparse",
  "scheesim-macro",
- "scheesim-solve",
 ]
 
 [[package]]
@@ -145,16 +144,6 @@ dependencies = [
 [[package]]
 name = "scheesim-macro"
 version = "0.1.0"
-
-[[package]]
-name = "scheesim-solve"
-version = "0.1.0"
-dependencies = [
- "parking_lot",
- "scheesim-concurrent",
- "scheesim-impl",
- "scheesim-macro",
-]
 
 [[package]]
 name = "scopeguard"

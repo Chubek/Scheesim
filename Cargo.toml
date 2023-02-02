@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-scheesim-solve = { path = "scheesim-solve" }
+#scheesim-solve = { path = "scheesim-solve" }
 scheesim-concurrent = { path = "scheesim-concurrent" }
 scheesim-macro = { path = "scheesim-macro" }
 scheesim-impl = { path = "scheesim-impl" }
