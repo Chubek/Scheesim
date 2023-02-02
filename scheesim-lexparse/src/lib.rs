@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use regex::Regex; //for exact-splitting
 
 pub enum EqualProperty {
     Bias(String, usize),
@@ -135,6 +136,13 @@ impl PadToken {
         let (s1, s2) = s.split_once(&seperator).expect("Error seperating once");
     
         (s1.to_string(), s2.to_string())
+    }
+
+    pub fn split_on_exact(&self, s: &str, stage_num: usize) -> Vec<String> {
+        let seperator = self.produce_seperator(stage_num);
+        let re = Regex::new(&format!(r"\b{seperator}\b")).unwrap();
+
+        re.split(s).map(|s| s.to_string()).collect()
     }
 
     fn produce_seperator(&self, stage_num: usize) -> String {
@@ -687,17 +695,17 @@ pub struct Element {
 
 impl Element {
     pub fn from(s: &str, line_num: usize, padder: &PadToken) -> Self {
-        let (s_terminal, s_component) = padder.split_once(s, 2);
+        let (s_terminal, s_component) = padder.split_once(s, 1);
     
         let (name, terminal) = Self::parse_terminal(&s_terminal, line_num);
 
-        match &name[..2] == "(*)" {
+        match &name[..3] == "(*)" {
             true => {
-                let name = name.replace("from", "").trim().to_string();
+                let name = name.replace("from", "");
                 let vec_node_str: Vec<Node> = s_component
-                                                        .split("+")
+                                                        .split("*")
                                                         .map(|s| s.trim())
-                                                        .map(|s| Node::from(s, padder))
+                                                        .map(|s| Node::from(s, padder, line_num))
                                                         .collect();
 
                 Self { name, component: None, terminal, subnodes: Some(vec_node_str) }
@@ -706,7 +714,7 @@ impl Element {
             false => {
                 let component = Component::from(&s_component, line_num);
 
-                Self { name: name.trim().to_string(), component: Some(component), terminal, subnodes: None }
+                Self { name, component: Some(component), terminal, subnodes: None }
             },
         }
     }
@@ -716,7 +724,7 @@ impl Element {
 
         let conns = ElementTerminal::from(s, line_num);
 
-        (s.to_string(), conns)
+        (name.trim().to_string(), conns)
     }
 }
 
@@ -924,8 +932,17 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn from(s: &str, padder: &PadToken) -> Self {
-        todo!()
+    pub fn from(s: &str, padder: &PadToken, line_num: usize) -> Self {
+        let (node_s, components_and_nodes_s) = s.split_once(">>").expect(&format!("Line `{line_num}`: Wrong pattern for nodes and component list, please consult documentation"));
+        let terminal = NodeTerminal::from(node_s, line_num);
+
+        let elements = padder.split_on_exact(components_and_nodes_s, 1)
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(i, s)| Element::from(&s, line_num + i + 1, padder))
+                                        .collect::<Vec<_>>();
+
+        Self { terminal, elements  }    
     }
 }
 
@@ -1218,8 +1235,22 @@ impl Unit {
     }
 }
 
-pub struct ScheesimSchema {
-    padder: PadToken,
-    netlist: String,
-    nodes: Vec<Node>,
+pub struct ScheesimSchema(Vec<Node>);
+
+
+impl ScheesimSchema {
+    pub fn from(s: &str) -> Self {
+        let mut split_on_plus  = s.split('+');
+
+        let padder_str = split_on_plus.next().expect("Netlist is mepty!");
+        let padder = PadToken::new(padder_str);
+
+        let nodes = split_on_plus
+                                    .enumerate()
+                                    .map(|(line_num, s)| Node::from(
+                                        s, &padder, line_num + 1))
+                                    .collect::<Vec<_>>();
+
+        Self(nodes)
+    }
 }
