@@ -1,6 +1,12 @@
-use regex::Regex; //for exact-splitting
+use colored::Colorize;
 use std::collections::HashMap;
 use std::process::exit;
+
+const NODE_SEP_TOKEN_L1: char = '+';
+const NAME_SEP_TOKEN_L1: char = '%';
+const COMP_SEP_TOKEN_L1: char = '-';
+const NAME_MARK_TOKEN_L2: char = '*';
+const NODE_MARK_TOKEN_L2: char = '^';
 
 pub enum EqualProperty {
     Bias(String, usize),
@@ -15,17 +21,14 @@ pub enum EqualProperty {
     Frequency(String, usize),
 }
 
-macro_rules! error_out {
-    ($message:literal) => {
-        println!(message),
-        exit(1)
-    };
-}
-
 impl EqualProperty {
     pub fn from(s: &str, line_num: usize) -> Self {
         let (key, value) = s.split_once("=").expect(
-            format!("Line `{line_num}`: Error with key-value equal property: {s} ").as_str(),
+            format!(
+                "{} at Line `{line_num}`: Error with key-value equal property: {s} ",
+                "Error".red().bold()
+            )
+            .as_str(),
         );
 
         match key.trim().to_lowercase().as_str() {
@@ -41,7 +44,8 @@ impl EqualProperty {
             "frequency" => Self::Frequency(value.trim().to_string(), line_num),
             _ => {
                 println!(
-                    "Line `{line_num}: Unknown quantity, consult documentation for allowed units`"
+                    "{} at Line `{line_num}: Unknown quantity, consult documentation for allowed units`",
+                    "Error".red().bold()
                 );
                 exit(1);
             }
@@ -108,69 +112,6 @@ impl FilterList<&'static str, EqualProperty> for Vec<EqualProperty> {
     }
 }
 
-pub enum PadToken {
-    Tab(usize),
-    Space(usize),
-}
-
-impl PadToken {
-    pub fn new(marker_in: &str) -> Self {
-        let marker = marker_in.trim();
-
-        if marker.chars().next().unwrap() != '[' || marker.chars().last().unwrap() != ']' {
-            println!("First line of the netlist must begin with [ and end with ], containing padding token and number of it");
-            exit(1);
-        }
-
-        let removed_left_square_bracket = marker.replace("[", "");
-        let removed_right_square_bracket = removed_left_square_bracket.replace("]", "");
-
-        let (token, num_str) = removed_right_square_bracket
-            .split_once(";")
-            .expect("Error getting padding token and number of it");
-        let num = num_str
-            .trim()
-            .parse::<usize>()
-            .expect("Error parsing number of padding tokens");
-
-        match token.trim().to_lowercase().as_str() {
-            "space" => Self::Space(num),
-            "tab" => Self::Tab(num),
-            _ => {
-                println!("Unspecified padding token at first line; must either be `tab` or `space` (case-insensetive)");
-                exit(1);
-            }
-        }
-    }
-
-    pub fn split_on(&self, s: &str, stage_num: usize) -> Vec<String> {
-        let seperator = self.produce_seperator(stage_num);
-
-        s.split(&seperator).map(|s| s.to_string()).collect()
-    }
-
-    pub fn split_once(&self, s: &str, stage_num: usize) -> (String, String) {
-        let seperator = self.produce_seperator(stage_num);
-        let (s1, s2) = s.split_once(&seperator).expect("Error seperating once");
-
-        (s1.to_string(), s2.to_string())
-    }
-
-    pub fn split_on_exact(&self, s: &str, stage_num: usize) -> Vec<String> {
-        let seperator = self.produce_seperator(stage_num);
-        let re = Regex::new(&format!(r"\b{seperator}\b")).unwrap();
-
-        re.split(s).map(|s| s.to_string()).collect()
-    }
-
-    fn produce_seperator(&self, stage_num: usize) -> String {
-        match self {
-            PadToken::Tab(n) => "\t".repeat(n * stage_num),
-            PadToken::Space(n) => " ".repeat(n * stage_num),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum Bias {
     NPN,
@@ -191,7 +132,10 @@ impl Bias {
             "np" => Self::NP,
             "pn" => Self::PN,
             _ => {
-                println!("Line `{line_num}`: Wrong bias type: {s}");
+                println!(
+                    "{} at Line `{line_num}`: Wrong bias type: {s}",
+                    "Error".red().bold()
+                );
                 exit(1);
             }
         }
@@ -231,7 +175,7 @@ impl Component {
     fn get_function_and_properties(s_in: &str, line_num: usize) -> (String, String) {
         let s = s_in.trim();
 
-        let (func, prop) = s.split_once("<").expect(format!("Line `{line_num}`: Error with element input, must be in form ElementComponent<properties_name=properties>").as_str());
+        let (func, prop) = s.split_once("<").expect(format!("{} at Line `{line_num}`: Error with element input, must be in form ElementComponent<properties_name=properties>", "Error".red().bold()).as_str());
         let prop_sans_right_angle = prop.replace(">", "");
 
         (func.to_string(), prop_sans_right_angle)
@@ -260,19 +204,28 @@ impl Component {
                         Some(u) => match u.is_ohm() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not ohm");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not ohm",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for resistor");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for resistor",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -298,19 +251,28 @@ impl Component {
                         Some(u) => match u.is_mho() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not mho/siemens");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not mho/siemens",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for conductor");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for conductor",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -336,19 +298,28 @@ impl Component {
                         Some(u) => match u.is_farad() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not farad");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not farad",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for capacitor");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for capacitor",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -374,19 +345,28 @@ impl Component {
                         Some(u) => match u.is_henry() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not henry");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not henry",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for inductor");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for inductor",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -411,19 +391,28 @@ impl Component {
                         Some(u) => match u.is_hertz() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not hertz");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not hertz",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for sine/ac source");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for sine/ac source",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -438,17 +427,18 @@ impl Component {
                     let solo_voltage = voltages[0].to_unit();
 
                     let (u1, u2) = match solo_voltage {
-                        Some(v) => {
-                            match v.voltage_solos() {
-                                true => (Some(v), None),
-                                false => {
-                                    println!("Line `{line_num}`: Single voltage must be <solo> of Volt unit");
-                                    exit(1);
-                                }
+                        Some(v) => match v.voltage_solos() {
+                            true => (Some(v), None),
+                            false => {
+                                println!("{} at Line `{line_num}`: Single voltage must be <solo> of Volt unit", "Error".red().bold());
+                                exit(1);
                             }
-                        }
+                        },
                         None => {
-                            println!("Line `{line_num}`: Voltage/Current undefined");
+                            println!(
+                                "{} at Line `{line_num}`: Voltage/Current undefined",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
@@ -461,12 +451,15 @@ impl Component {
                         Some(i) => match i.current_solos() {
                             true => (None, Some(i)),
                             false => {
-                                println!("Line `{line_num}`: Single current must be <solo> of Amper unit");
+                                println!("{} at Line `{line_num}`: Single current must be <solo> of Amper unit", "Error".red().bold());
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: Voltage/Current undefined");
+                            println!(
+                                "{} at Line `{line_num}`: Voltage/Current undefined",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
@@ -480,14 +473,20 @@ impl Component {
                         (voltage_1.to_unit(), voltage_2.to_unit());
 
                     if voltage_unit_1.is_none() && voltage_unit_2.is_none() {
-                        println!("Line `{line_num}`: No voltages exist");
+                        println!(
+                            "{} at Line `{line_num}`: No voltages exist",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
 
                     let (v1, v2) = (voltage_unit_1.unwrap(), voltage_unit_2.unwrap());
 
                     if !(v1.is_volts() && v2.is_amps()) {
-                        println!("Line `{line_num}`: Two voltages must have unit Volt");
+                        println!(
+                            "{} at Line `{line_num}`: Two voltages must have unit Volt",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
 
@@ -499,7 +498,7 @@ impl Component {
                             false => (Some(v2), Some(v1)),
                         }
                     } else {
-                        println!("Line `{line_num}`: When two voltages, one must be controller, and the other dependent");
+                        println!("{} at Line `{line_num}`: When two voltages, one must be controller, and the other dependent", "Error".red().bold());
                         exit(1);
                     };
 
@@ -512,13 +511,19 @@ impl Component {
                         (current_1.to_unit(), current_2.to_unit());
 
                     if current_unit_1.is_none() && current_unit_2.is_none() {
-                        println!("Line `{line_num}`: No currents exist");
+                        println!(
+                            "{} at Line `{line_num}`: No currents exist",
+                            "Error".red().bold()
+                        );
                     }
 
                     let (i1, i2) = (current_unit_1.unwrap(), current_unit_2.unwrap());
 
                     if !(i1.is_amps() && i2.is_amps()) {
-                        println!("Line `{line_num}`: Two currents must be of unit Amps");
+                        println!(
+                            "{} at Line `{line_num}`: Two currents must be of unit Amps",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
 
@@ -530,7 +535,7 @@ impl Component {
                             false => (Some(i2), Some(i1)),
                         }
                     } else {
-                        println!("Line `{line_num}`: When two currents, one must be controller, and the other dependent");
+                        println!("{} at Line `{line_num}`: When two currents, one must be controller, and the other dependent", "Error".red().bold());
                         exit(1);
                     };
 
@@ -544,24 +549,22 @@ impl Component {
                     let (vu, iu) = (v.to_unit().unwrap(), i.to_unit().unwrap());
 
                     if !(vu.is_volts() && iu.is_amps()) {
-                        println!("Line `{line_num}`:  Voltage must be of unit volts and current must be of unit amps");
+                        println!("{} at Line `{line_num}`:  Voltage must be of unit volts and current must be of unit amps", "Error".red().bold());
                         exit(1);
                     }
 
                     let (u1, u2) = match vu.voltage_controls() {
-                        true => {
-                            match iu.current_depends() {
-                                true => (Some(vu), Some(iu)),
-                                false => {
-                                    println!("Line `{line_num}`: If voltage controls, current must depent");
-                                    exit(1);
-                                }
+                        true => match iu.current_depends() {
+                            true => (Some(vu), Some(iu)),
+                            false => {
+                                println!("{} at Line `{line_num}`: If voltage controls, current must depent", "Error".red().bold());
+                                exit(1);
                             }
-                        }
+                        },
                         false => match iu.current_controls() {
                             true => (Some(iu), Some(vu)),
                             false => {
-                                println!("Line `{line_num}`: Either voltage, or current, should control and ther other must be dependent");
+                                println!("{} at Line `{line_num}`: Either voltage, or current, should control and ther other must be dependent", "Error".red().bold());
                                 exit(1);
                             }
                         },
@@ -569,7 +572,7 @@ impl Component {
 
                     (u1, u2)
                 } else {
-                    println!("Line `{line_num}`: Wrong voltage/current units, must have one solo voltage/current, or two controller/dependent voltage/current or two controller/dependent current/voltage");
+                    println!("{} at Line `{line_num}`: Wrong voltage/current units, must have one solo voltage/current, or two controller/dependent voltage/current or two controller/dependent current/voltage", "Error".red().bold());
                     exit(1);
                 };
 
@@ -596,19 +599,28 @@ impl Component {
                         Some(u) => match u.is_watts() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not watts");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not watts",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for BJT");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for BJT",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -616,12 +628,18 @@ impl Component {
                     Some(b) => match b.to_bias() {
                         Some(bias) => bias,
                         None => {
-                            println!("Line `{line_num}`: Error getting bias BJT");
+                            println!(
+                                "{} at Line `{line_num}`: Error getting bias BJT",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     },
                     None => {
-                        println!("Line `{line_num}`: Bias not specified for BJT");
+                        println!(
+                            "{} at Line `{line_num}`: Bias not specified for BJT",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
                 };
@@ -649,19 +667,28 @@ impl Component {
                         Some(u) => match u.is_watts() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not watts");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not watts",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for FET");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for FET",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -669,12 +696,18 @@ impl Component {
                     Some(b) => match b.to_bias() {
                         Some(bias) => bias,
                         None => {
-                            println!("Line `{line_num}`: Error getting bias FET");
+                            println!(
+                                "{} at Line `{line_num}`: Error getting bias FET",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     },
                     None => {
-                        println!("Line `{line_num}`: Bias not specified for FET");
+                        println!(
+                            "{} at Line `{line_num}`: Bias not specified for FET",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
                 };
@@ -702,19 +735,28 @@ impl Component {
                         Some(u) => match u.is_watts() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not watts");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not watts",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for MOSFET");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for MOSFET",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -722,12 +764,18 @@ impl Component {
                     Some(b) => match b.to_bias() {
                         Some(bias) => bias,
                         None => {
-                            println!("Line `{line_num}`: Error getting bias MOSFET");
+                            println!(
+                                "{} at Line `{line_num}`: Error getting bias MOSFET",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     },
                     None => {
-                        println!("Line `{line_num}`: Bias not specified for MOSFET");
+                        println!(
+                            "{} at Line `{line_num}`: Bias not specified for MOSFET",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
                 };
@@ -755,19 +803,28 @@ impl Component {
                         Some(u) => match u.is_watts() {
                             true => u,
                             false => {
-                                println!("Line `{line_num}`: Unit is not watts");
+                                println!(
+                                    "{} at Line `{line_num}`: Unit is not watts",
+                                    "Error".red().bold()
+                                );
                                 exit(1);
                             }
                         },
                         None => {
-                            println!("Line `{line_num}`: No unit found");
+                            println!(
+                                "{} at Line `{line_num}`: No unit found",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     };
 
                     u
                 } else {
-                    println!("Line `{line_num}`: No unit specified for diode");
+                    println!(
+                        "{} at Line `{line_num}`: No unit specified for diode",
+                        "Error".red().bold()
+                    );
                     exit(1);
                 };
 
@@ -775,12 +832,18 @@ impl Component {
                     Some(b) => match b.to_bias() {
                         Some(bias) => bias,
                         None => {
-                            println!("Line `{line_num}`: Error getting bias diode");
+                            println!(
+                                "{} at Line `{line_num}`: Error getting bias diode",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
                     },
                     None => {
-                        println!("Line `{line_num}`: Bias not specified for diode");
+                        println!(
+                            "{} at Line `{line_num}`: Bias not specified for diode",
+                            "Error".red().bold()
+                        );
                         exit(1);
                     }
                 };
@@ -796,7 +859,7 @@ impl Component {
                 Self::BJT(unit, bias, ty)
             }
             _ => {
-                println!("Line `{line_num}`: Unknown element, consult the documentation for a full list of allowed element and element names");
+                println!("{} at Line `{line_num}`: Unknown element, consult the documentation for a full list of allowed element and element names", "Error".red().bold());
                 exit(1);
             }
         }
@@ -838,7 +901,10 @@ impl ElementType {
             "nonlinear" => Self::NonLinear,
             "dynamic" => Self::Dynamic,
             _ => {
-                println!("Line `{line_num}`: Wrong element type given: {value}");
+                println!(
+                    "{} at Line `{line_num}`: Wrong element type given: {value}",
+                    "Error".red().bold()
+                );
                 exit(1);
             }
         }
@@ -854,27 +920,26 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn from(s_in: &str, line_num: usize, padder: &PadToken) -> Self {
+    pub fn from(s_in: &str, line_num: usize) -> Self {
         let s = s_in.trim();
-
-        let (s_terminal, s_component) = padder.split_once(s, 1);
+        let (s_terminal, s_component) = s.split_once(COMP_SEP_TOKEN_L1).expect(&format!("{} Name/Terminal specifications and component names must be seperated by {NAME_SEP_TOKEN_L1}", "Error".red().bold()));
 
         let (name, terminal) = Self::parse_terminal(&s_terminal, line_num);
 
-        match &name[..3] == "(*)" {
+        match name.chars().next().unwrap() == NAME_MARK_TOKEN_L2 {
             true => {
-                let name = name.replace("from", "");
-                let vec_node_str: Vec<Node> = s_component
-                    .split("*")
+                let name = name.replace("*", "");
+                let subnodes: Vec<Node> = s_component
+                    .split(NODE_MARK_TOKEN_L2)
                     .map(|s| s.trim())
-                    .map(|s| Node::from(s, padder, line_num))
+                    .map(|s| Node::from(s, line_num))
                     .collect();
 
                 Self {
                     name,
                     component: None,
                     terminal,
-                    subnodes: Some(vec_node_str),
+                    subnodes: Some(subnodes),
                 }
             }
             false => {
@@ -890,10 +955,13 @@ impl Element {
         }
     }
 
-    fn parse_terminal(s_terminal: &str, line_num: usize) -> (String, ElementTerminal) {
+    fn parse_terminal(s_terminal_in: &str, line_num: usize) -> (String, ElementTerminal) {
+        let s_terminal = s_terminal_in.trim();
+
         let (name, s) = s_terminal.split_once("<").expect(
             format!(
-                "Line `{line_num}`: Element name should be in style name<MT/BT/TT[*connections]>"
+                "{} at Line `{line_num}`: Element name should be in style name<MT/BT/TT[*connections]>",
+                "Error".red().bold()
             )
             .as_str(),
         );
@@ -922,7 +990,7 @@ impl TerminalConnection {
             }
             _ => match s.contains(">") | s.contains("<") | s.contains(";") {
                 true => {
-                    println!("Line `{line_num}`: Connection name `{s}` contains illegal character (>, < or ;)");
+                    println!("{} at Line `{line_num}`: Connection name `{s}` contains illegal character (>, < or ;)", "Error".red().bold());
                     exit(1);
                 }
                 false => Self::Named(s.to_lowercase()),
@@ -939,13 +1007,20 @@ impl FromEqualSeperatedSeq for HashMap<String, TerminalConnection> {
     fn from_eq_sep_conn(&mut self, v: &Vec<&str>, line_num: usize) {
         v.into_iter().for_each(|s| {
             if !s.contains("=") {
-                println!("Item {s} must be equal-sign-seperated!");
+                println!(
+                    "{} Item {s} must be equal-sign-seperated!",
+                    "Error".red().bold()
+                );
                 exit(1);
             }
 
-            let (key, value) = s
-                .split_once("=")
-                .expect(format!("Error splitting `{s}` by equal sign").as_str());
+            let (key, value) = s.split_once("=").expect(
+                format!(
+                    "{} Error splitting `{s}` by equal sign",
+                    "Error".red().bold()
+                )
+                .as_str(),
+            );
 
             self.insert(key.to_string(), TerminalConnection::from(value, line_num));
         });
@@ -974,7 +1049,10 @@ impl NodeTerminal {
         if !(replaced_double_right_angle.to_lowercase().contains("in")
             && replaced_double_right_angle.contains("out"))
         {
-            println!("Line `{line_num}`: Node connections must have either in, out or both");
+            println!(
+                "{} at Line `{line_num}`: Node connections must have either in, out or both",
+                "Error".red().bold()
+            );
             exit(1);
         }
 
@@ -1025,7 +1103,10 @@ impl NodeTerminal {
                 let (fin, fout) = match second {
                     Some(inout) => {
                         if (inout.is_in() && first.is_in()) || (!inout.is_in() && !first.is_in()) {
-                            println!("Line `{line_num}`: Samewise ins/outs");
+                            println!(
+                                "{} at Line `{line_num}`: Samewise ins/outs",
+                                "Error".red().bold()
+                            );
                             exit(1);
                         }
 
@@ -1047,7 +1128,10 @@ impl NodeTerminal {
                 (fin, fout)
             }
             None => {
-                println!("Line `{line_num}`: At least one in or one out is required!");
+                println!(
+                    "{} at Line `{line_num}`: At least one in or one out is required!",
+                    "Error".red().bold()
+                );
                 exit(1);
             }
         };
@@ -1074,13 +1158,17 @@ impl NodeTerminal {
 impl ElementTerminal {
     pub fn from(s_in: &str, line_num: usize) -> Self {
         if !s_in.contains("]>:") || s_in.contains("]>>:") {
-            println!("Line `{line_num}`: Wrong pattern for compnent name, please consult documentation for allowed patterns for component names");
+            println!("{} at Line `{line_num}`: Wrong pattern for compnent name, please consult documentation for allowed patterns for component names", "Error".red().bold());
             exit(1);
         }
 
         let rem_right_square = s_in.replace("]>:", "");
         let (ty, conns) = rem_right_square.split_once("[").expect(
-            format!("Line `{line_num}`: Terminal listing must be in form <type>[*conns]").as_str(),
+            format!(
+                "{} at Line `{line_num}`: Terminal listing must be in form <type>[*conns]",
+                "Error".red().bold()
+            )
+            .as_str(),
         );
 
         let conns_split = conns.split(";").map(|sp| sp.trim()).collect::<Vec<_>>();
@@ -1099,7 +1187,7 @@ impl ElementTerminal {
                     }
                     _ => {
                         println!(
-                            "Line `{line_num}`: BiTerminal connection needs exactly 2 connections"
+                            "{} at Line `{line_num}`: BiTerminal connection needs exactly 2 connections", "Error".red().bold()
                         );
                         exit(1);
                     }
@@ -1126,7 +1214,7 @@ impl ElementTerminal {
                     }
                     _ => {
                         println!(
-                            "Line `{line_num}`: TriTerminal connection needs exactly 3 connections"
+                            "{} at Line `{line_num}`: TriTerminal connection needs exactly 3 connections", "Error".red().bold()
                         );
                         exit(1);
                     }
@@ -1142,12 +1230,12 @@ impl ElementTerminal {
                     Self::MultiTerminal(hm)
                 }
                 false => {
-                    println!("Line `{line_num}`: MultiTerminal connections must be expressed within the component");
+                    println!("{} at Line `{line_num}`: MultiTerminal connections must be expressed within the component", "Error".red().bold());
                     exit(1);
                 }
             },
             _ => {
-                println!("Line `{line_num}`: Wrong terminal connection type, please consult documentation for a list of allowed terminal connection types");
+                println!("{} at Line `{line_num}`: Wrong terminal connection type, please consult documentation for a list of allowed terminal connection types", "Error".red().bold());
                 exit(1);
             }
         }
@@ -1169,18 +1257,19 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn from(s_in: &str, padder: &PadToken, line_num: usize) -> Self {
+    pub fn from(s_in: &str, line_num: usize) -> Self {
         let s = s_in.trim();
 
-        let (node_name_s, components_and_nodes_s) = s.split_once(">>").expect(&format!("Line `{line_num}`: Wrong pattern for nodes and component list, please consult documentation"));
-        let (name, node_s) = node_name_s.split_once("<<").expect(&format!("Line `{line_num}`: Wrong pattern for node name, please consult documentation for allowed patterns"));
+        let (node_name_s, components_and_nodes_s) = s.split_once(">>").expect(&format!("{} at Line `{line_num}`: Wrong pattern for nodes and component list, please consult documentation", "Error".red().bold()));
+        let (name, node_s) = node_name_s.split_once("<<").expect(&format!("{} at Line `{line_num}`: Wrong pattern for node name, please consult documentation for allowed patterns", "Error".red().bold()));
         let terminal = NodeTerminal::from(node_s, line_num);
 
-        let elements = padder
-            .split_on_exact(components_and_nodes_s, 1)
-            .into_iter()
+        let elements = components_and_nodes_s
+            .split(NAME_SEP_TOKEN_L1)
+            .filter(|s| s.len() > 0)
+            .map(|s| s.trim())
             .enumerate()
-            .map(|(i, s)| Element::from(&s, line_num + i + 1, padder))
+            .map(|(i, s)| Element::from(&s, line_num + i + 1))
             .collect::<Vec<_>>();
 
         Self {
@@ -1238,7 +1327,7 @@ impl UnitMultiplier {
             "d" => Self::Deci,
             "c" => Self::Centi,
             "m" => Self::Milli,
-            "u" | "μ" => Self::Micro,
+            "u" => Self::Micro,
             "n" => Self::Nano,
             "p" => Self::Pico,
             "f" => Self::Femto,
@@ -1335,8 +1424,8 @@ impl Unit {
                 quantitiy.push(ch);
             } else if ch.is_alphabetic() {
                 if vec![
-                    'q', 'r', 'y', 'z', 'a', 'f', 'p', 'n', 'μ', 'u', 'm', 'c', 'd', 'h', 'k', 'M',
-                    'G', 'T', 'P', 'T', 'E', 'Z', 'Y', 'R', 'Q',
+                    'q', 'r', 'y', 'z', 'a', 'f', 'p', 'n', 'u', 'm', 'c', 'd', 'h', 'k', 'M', 'G',
+                    'T', 'P', 'T', 'E', 'Z', 'Y', 'R', 'Q',
                 ]
                 .into_iter()
                 .any(|u| u == ch)
@@ -1352,7 +1441,7 @@ impl Unit {
                     unit.push(ch);
                 }
             } else {
-                println!("Line `{line_num}`: Illegal character in quantity, neither unit, multiplier, nor number (with or without decimal). Illegal character is: {}", ch);
+                println!("{} at Line `{line_num}`: Illegal character in quantity, neither unit, multiplier, nor number (with or without decimal). Illegal character is: {}", "Error".red().bold(), ch);
                 exit(1);
             }
         }
@@ -1365,34 +1454,42 @@ impl Unit {
 
         let (value_str, mult_str, unit_str) = Self::seperate_num_from_unit(&s, line_num);
 
-        let value: f64 = value_str
-            .parse()
-            .expect(format!("Line `{line_num}`: Error parsing value: {value_str}").as_str());
+        let value: f64 = value_str.parse().expect(
+            format!(
+                "{} at Line `{line_num}`: Error parsing value: {value_str}",
+                "Error".red().bold()
+            )
+            .as_str(),
+        );
         let multiplier = UnitMultiplier::from(&mult_str);
 
         match unit_str.to_lowercase().as_str() {
             "h" => Self::Henry(value, multiplier),
             "f" => Self::Farad(value, multiplier),
-            "ohm" | "Ω" => Self::Ohm(value, multiplier),
-            "mho" | "ʊ" | "s" | "siemens" => Self::Mho(value, multiplier),
+            "ohm" | "^" => Self::Ohm(value, multiplier),
+            "mho" | "#" | "s" | "siemens" => Self::Mho(value, multiplier),
             "hertz" | "hz" => Self::Hertz(value, multiplier),
             "v" | "volts" | "volt" => Self::Volts(value, multiplier, ControlStat::Solo),
             "A" | "amps" | "amp" => Self::Amps(value, multiplier, ControlStat::Solo),
-            "v<dep>" | "volts<dep>" | "volt<dep>" => {
+            "v@dep" | "volts@dep" | "volt@dep" => {
                 Self::Volts(value, multiplier, ControlStat::Dependent)
             }
-            "A<dep>" | "amps<dep>" | "amp<dep>" => {
+            "a@dep" | "amps@dep" | "amp@dep" => {
                 Self::Amps(value, multiplier, ControlStat::Dependent)
             }
-            "v<ctrl>" | "volts<ctrl>" | "volt<ctrl>" => {
+            "v@ctrl" | "volts@ctrl" | "volt@ctrl" => {
                 Self::Volts(value, multiplier, ControlStat::Controller)
             }
-            "A<ctrl>" | "amps<ctrl>" | "amp<ctrl>" => {
+            "a@ctrl" | "amps@ctrl" | "amp@ctrl" => {
                 Self::Amps(value, multiplier, ControlStat::Controller)
             }
-            "W" | "Watts" | "watts" => Self::Watts(value, multiplier),
+            "w" | "watt" | "watts" => Self::Watts(value, multiplier),
             _ => {
-                println!("The given unit is not SI or wrong: {}", unit_str);
+                println!(
+                    "{} The given unit is not SI or wrongly written: {}. Please consult the documentation for an allowed list of units.",
+                    "Error".red().bold(),
+                    unit_str.bright_yellow().bold()
+                );
                 exit(1);
             }
         }
@@ -1502,18 +1599,27 @@ pub struct ScheesimSchema(Vec<Node>);
 
 impl ScheesimSchema {
     pub fn from(s_in: &str) -> Self {
-        let s = s_in.trim();
+        let s_trimmed = s_in.trim().replace("\n", "");
+        let s = Self::replace_non_ascii(&s_trimmed);
 
-        let mut split_on_plus = s.split('+');
-
-        let padder_str = split_on_plus.next().expect("Netlist is mepty!");
-        let padder = PadToken::new(padder_str);
-
-        let nodes = split_on_plus
+        let nodes = s
+            .split(NODE_SEP_TOKEN_L1)
+            .filter(|s| s.len() > 0)
             .enumerate()
-            .map(|(line_num, s)| Node::from(s, &padder, line_num + 2))
+            .map(|(line_num, s)| Node::from(s, line_num + 1))
             .collect::<Vec<_>>();
 
         Self(nodes)
+    }
+
+    fn replace_non_ascii(s: &str) -> String {
+        s.chars()
+            .map(|ch| match ch {
+                'μ' => 'u',
+                'Ω' => '^',
+                'ʊ' => '#',
+                _ => ch,
+            })
+            .collect::<String>()
     }
 }
