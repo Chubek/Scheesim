@@ -1,8 +1,8 @@
 use scheesim_lexparse::ScheesimSchema;
-use std::io::read_to_string;
 use std::fs::File;
+use std::io::read_to_string;
 
-fn main() {   
+fn main() {
     let ss = read_to_string(File::open("examples/test.scheenet").unwrap()).unwrap();
 
     let schema = ScheesimSchema::from(ss.trim());

@@ -1,0 +1,53 @@
+;lowPassFilter -author=ChubakBidpaa -date=8Feb2023 -profile=prof_ac -profile=prof_dc
+;;mySource -in=ground out=next,
+;;;prof_ac .acSweep -freq=20 -voltage=110,
+;;;prof_dc .dcsource  -voltage=5v,
+;;;default .dcsource  -voltage=2 -current*=1m
+;;cap1 -in=prev -out=next,
+;;;prof_ac .capacitor -dynamic -capacitance=3m,
+;;;prof_dc .dynoCapacitor -nonlinear -capacitance=2e-3n,
+;;;default .capacitor -capacitance=33u,
+;;resistorNode  -in=prev -out=$PROBE,
+;;;prof_ac .resistor -nonlinear -resistance=10k,
+;;;prof_dc .resistor -resistance=2k,
+;;;default .resistor -resistance=360,
+;
+
+
+/*
+                +--------CAP--------+
+                |                   |
+                
+                S                   R
+
+                |                   |
+                |                   |
+                GRND-------------------PROBE
+
+*/
+
+
+;highPassFilter -author=ChubakBidpaa -date=8Feb2023 ,
+;;mySource -in=ground -out=next -out*=resistor1 -out*=resistor2,
+;;;default .dcSource -voltage=2 -voltage*=10,
+;;resistor1 -in*=mySource -out=ground,
+;;;default .resistor -resistance=22K,
+;;resistor2 -in*=mySource -out=ground,
+;;;default .resistor -resistance=22K
+;;cap1 -in=mySource -out=$PROBE,
+;;;default .capacitor -nonlinear -dynamic -capacitance=33u,
+;
+
+
+/*
+                |-----------CAP-----+-------PROBE
+                |                   |       |
+                
+                S                   R       R
+                
+                |                   |       |
+                |                   |       |
+                GRND---------+------+-------+
+
+*/
+
