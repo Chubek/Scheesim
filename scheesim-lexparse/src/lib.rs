@@ -1,4 +1,4 @@
-use std::process::exit;
+use std::{fs::File, io::read_to_string, process::exit};
 
 pub enum ComponentMarker {
     ACSweep,
@@ -150,19 +150,55 @@ impl Unit {
     }
 }
 
+pub enum JunctionChannel {
+    NPN,
+    PNP,
+    NP,
+    PN,
+    N,
+    P,
+}
+
+impl JunctionChannel {
+    pub fn from(s: &str, line_number: usize) -> Self {
+        match s.to_lowercase().as_str() {
+            "npn" => Self::NPN,
+            "pnp" => Self::PNP,
+            "np" => Self::NP,
+            "pn" => Self::PN,
+            "n" => Self::N,
+            "p" => Self::P,
+            _ => error_out!("Wrong junction or channel '{}' in line {}", s, line_number),
+        }
+    }
+}
+
+pub enum Connection {
+    Serial(String),
+    Parallel(String),
+}
+
+pub enum Currentage {
+    Solo(Unit),
+    Dom(Unit),
+    Sub(Unit),
+}
+
 pub enum Argument {
     Author(String),
     Date(String),
-    In(String),
-    Out(String),
-    Base(String),
-    Voltage(Unit),
+    In(Connection),
+    Out(Connection),
+    Base(Connection),
+    Voltage(Currentage),
+    MaxVoltage(Unit),
     Power(Unit),
-    Current(Unit),
+    Current(Currentage),
     Inductance(Unit),
     Capacitance(Unit),
     Resistance(Unit),
-    Frequency(String),
+    Frequency(Unit),
+    JunctionChannel(JunctionChannel),
     Dynamic,
     Nonlinear,
 }
@@ -178,26 +214,39 @@ impl Argument {
             "-nonlinear" => Self::Nonlinear,
             _ => match split_on_equal.next() {
                 Some(v) => {
+                    if name == "-junction" || name == "-channel" {
+                        let junction_channel = JunctionChannel::from(v, line_number);
+                        return Self::JunctionChannel(junction_channel);
+                    }
+
                     let value = v.trim().to_string();
 
                     match name.to_lowercase().as_str() {
                         "-author" => Self::Author(value),
                         "-date" => Self::Date(value),
-                        "-in" => Self::In(value),
-                        "-base" => Self::Base(value),
-                        "-out" => Self::Out(value),
+                        "-in" => Self::In(Connection::Serial(value)),
+                        "-base" => Self::Base(Connection::Serial(value)),
+                        "-out" => Self::Out(Connection::Serial(value)),
+                        "-in*" => Self::In(Connection::Parallel(value)),
+                        "-base*" => Self::Base(Connection::Parallel(value)),
+                        "-out*" => Self::Out(Connection::Parallel(value)),
 
                         _ => {
                             let value_unit = Unit::from(&value, line_number);
 
                             match name.to_lowercase().as_str() {
-                                "-voltage" => Self::Voltage(value_unit),
-                                "-current" => Self::Current(value_unit),
+                                "-voltage" => Self::Voltage(Currentage::Solo(value_unit)),
+                                "-current" => Self::Current(Currentage::Solo(value_unit)),
+                                "-voltage*" => Self::Voltage(Currentage::Dom(value_unit)),
+                                "-current*" => Self::Current(Currentage::Dom(value_unit)),
+                                "-voltage^" => Self::Voltage(Currentage::Sub(value_unit)),
+                                "-current^" => Self::Current(Currentage::Sub(value_unit)),
+                                "-max_voltage" => Self::MaxVoltage(value_unit),
                                 "-power" => Self::Power(value_unit),
                                 "-inducance" => Self::Inductance(value_unit),
                                 "-capacitance" => Self::Capacitance(value_unit),
                                 "-resistance" => Self::Resistance(value_unit),
-                                "-frequency" => Self::Voltage(value_unit),
+                                "-frequency" => Self::Frequency(value_unit),
                                 _ => error_out!(
                                     "Wrong type of argument: '{}' in line {}",
                                     s,
@@ -299,5 +348,15 @@ impl Netlist {
                 .map(|(i, s)| LexemeLine::from(s, i + 1))
                 .collect(),
         )
+    }
+
+    pub fn from_file(fp: &str) -> Self {
+        match File::open(fp) {
+            Ok(desc) => match read_to_string(desc) {
+                Ok(netlist) => Self::from(&netlist),
+                Err(e) => error_out!("Reading file '{}' to string: {}", fp, e),
+            },
+            Err(e) => error_out!("Opening file '{}' for reading: {}", fp, e),
+        }
     }
 }

@@ -11,3 +11,4 @@ scheesim-concurrent = { path = "scheesim-concurrent" }
 scheesim-macro = { path = "scheesim-macro" }
 scheesim-impl = { path = "scheesim-impl" }
 scheesim-lexparse = { path = "scheesim-lexparse" }
+scheesim-mna = { path = "scheesim-mna" }

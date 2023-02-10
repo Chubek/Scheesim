@@ -122,6 +122,7 @@ dependencies = [
  "scheesim-impl",
  "scheesim-lexparse",
  "scheesim-macro",
+ "scheesim-mna",
 ]
 
 [[package]]
@@ -149,6 +150,13 @@ dependencies = [
 [[package]]
 name = "scheesim-macro"
 version = "0.1.0"
+
+[[package]]
+name = "scheesim-mna"
+version = "0.1.0"
+dependencies = [
+ "scheesim-lexparse",
+]
 
 [[package]]
 name = "scopeguard"
