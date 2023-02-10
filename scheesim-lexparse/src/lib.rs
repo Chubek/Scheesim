@@ -1,4 +1,4 @@
-use std::{fs::File, io::read_to_string, process::exit};
+use std::{fs::File, io::read_to_string};
 
 pub enum ComponentMarker {
     ACSweep,
@@ -10,12 +10,13 @@ pub enum ComponentMarker {
     Diode,
 }
 
+#[macro_export]
 macro_rules! error_out {
     ($m:literal, $($f:ident),*) => {
         {
             let string = format!($m, $($f),*);
             eprintln!("\x1b[1;31mError:\x1b[0m {}", string);
-            exit(1);
+            std::process::exit(1);
         }
 
     };
@@ -284,14 +285,14 @@ impl Argument {
 }
 
 pub enum Lexeme {
-    NetlistName(String, usize),
-    Component(ComponentMarker, usize),
-    NodeName(String, usize),
-    ProfileName(String, usize),
-    Arg(Argument, usize),
-    Pobe(usize),
-    EndMarker(usize),
-    Comment(usize),
+    NetlistName(String),
+    Component(ComponentMarker),
+    NodeName(String),
+    ProfileName(String),
+    Arg(Argument),
+    Pobe,
+    EndMarker,
+    Comment,
 }
 
 impl Lexeme {
@@ -313,26 +314,26 @@ impl Lexeme {
                         ';' => {
                             let res = match char_iter.next() {
                                     Some(ch) => match ch {
-                                        ';' => Self::ProfileName(s.replace(";;;", ""), line_number),
-                                        _ => Self::NodeName(s.replace(";;", ""), line_number),
+                                        ';' => Self::ProfileName(s.replace(";;;", "")),
+                                        _ => Self::NodeName(s.replace(";;", "")),
                                     },
                                     None => error_out!("Wrong token '{}' at line {}, semicolon marker cannot be left empty", ch, line_number),
                                 };
 
                             res
                         }
-                        _ => Self::NetlistName(s.replace(";", ""), line_number),
+                        _ => Self::NetlistName(s.replace(";", "")),
                     },
-                    None => Self::EndMarker(line_number),
+                    None => Self::EndMarker,
                 };
                 res
             }
-            '-' => Self::Arg(Argument::from(s, line_number), line_number),
+            '-' => Self::Arg(Argument::from(s, line_number)),
             '$' => match s.to_lowercase().contains("probe") {
-                true => Self::Pobe(line_number),
+                true => Self::Pobe,
                 false => error_out!("Lexeme '{}' in line {}: it must be $PROBE", s, line_number),
             },
-            '/' => Self::Comment(line_number),
+            '/' => Self::Comment,
             _ => error_out!(
                 "Problem with lexeme '{}' in line {}: it's not a valid lexeme for Scheesim Netlist",
                 s,
@@ -342,15 +343,18 @@ impl Lexeme {
     }
 }
 
-pub struct LexemeLine(Vec<Lexeme>);
+pub struct LexemeLine {
+    lexemes: Vec<Lexeme>,
+    line_number: usize,
+}
 
 impl LexemeLine {
     pub fn from(s: &str, line_number: usize) -> Self {
-        Self(
-            s.split_whitespace()
-                .map(|s| Lexeme::from(s, line_number))
-                .collect::<Vec<Lexeme>>(),
-        )
+        let lexemes = s.split_whitespace()
+        .map(|s| Lexeme::from(s, line_number))
+        .collect::<Vec<Lexeme>>();
+
+        Self { lexemes, line_number }
     }
 
 }
@@ -361,7 +365,7 @@ impl IntoIterator for LexemeLine {
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.lexemes.into_iter()
     }
 }
 
