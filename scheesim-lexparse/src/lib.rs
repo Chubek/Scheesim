@@ -176,6 +176,23 @@ impl JunctionChannel {
 pub enum Connection {
     Serial(String),
     Parallel(String),
+    Ground,
+    Next,
+    Prev,
+}
+
+impl Connection {
+    pub fn from(s: &str, serial: bool) -> Self {
+        match s.to_lowercase().as_str() {
+            "prev" | "previous" => Self::Prev,
+            "next" => Self::Next,
+            "grnd" | "ground" => Self::Ground,
+            _ => match serial {
+                true => Self::Serial(s.to_string()),
+                false => Self::Parallel(s.to_string()),
+            }
+        }
+    }
 }
 
 pub enum Currentage {
@@ -224,12 +241,12 @@ impl Argument {
                     match name.to_lowercase().as_str() {
                         "-author" => Self::Author(value),
                         "-date" => Self::Date(value),
-                        "-in" => Self::In(Connection::Serial(value)),
-                        "-base" => Self::Base(Connection::Serial(value)),
-                        "-out" => Self::Out(Connection::Serial(value)),
-                        "-in*" => Self::In(Connection::Parallel(value)),
-                        "-base*" => Self::Base(Connection::Parallel(value)),
-                        "-out*" => Self::Out(Connection::Parallel(value)),
+                        "-in" => Self::In(Connection::from(&value, true)),
+                        "-base" => Self::Base(Connection::from(&value, true)),
+                        "-out" => Self::Out(Connection::from(&value, true)),
+                        "-in*" => Self::In(Connection::from(&value, false)),
+                        "-base*" => Self::Base(Connection::from(&value, false)),
+                        "-out*" => Self::Out(Connection::from(&value, false)),
 
                         _ => {
                             let value_unit = Unit::from(&value, line_number);
