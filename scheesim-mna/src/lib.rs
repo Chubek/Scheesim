@@ -92,12 +92,17 @@ pub enum Component {
     VoltageControlledVoltageSource(VoltageControlledVoltageSource),
 }
 
+
+pub struct  NodeProfile {
+    profile: Profile,
+    components: Vec<Component>,
+}
+
 pub struct Node {
     number: u32,
-    components: Vec<Component>,
+    node_profiles: Vec<NodeProfile>,
     ins: Vec<Connection>,
     outs: Vec<Connection>,
     bases: Option<Vec<Connection>>
-
 
 }
