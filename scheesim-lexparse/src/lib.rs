@@ -284,14 +284,14 @@ impl Argument {
 }
 
 pub enum Lexeme {
-    NetlistName(String),
-    Component(ComponentMarker),
-    NodeName(String),
-    ProfileName(String),
-    Arg(Argument),
-    Pobe,
-    EndMarker,
-    Comment,
+    NetlistName(String, usize),
+    Component(ComponentMarker, usize),
+    NodeName(String, usize),
+    ProfileName(String, usize),
+    Arg(Argument, usize),
+    Pobe(usize),
+    EndMarker(usize),
+    Comment(usize),
 }
 
 impl Lexeme {
@@ -313,26 +313,26 @@ impl Lexeme {
                         ';' => {
                             let res = match char_iter.next() {
                                     Some(ch) => match ch {
-                                        ';' => Self::ProfileName(s.replace(";;;", "")),
-                                        _ => Self::NodeName(s.replace(";;", "")),
+                                        ';' => Self::ProfileName(s.replace(";;;", ""), line_number),
+                                        _ => Self::NodeName(s.replace(";;", ""), line_number),
                                     },
                                     None => error_out!("Wrong token '{}' at line {}, semicolon marker cannot be left empty", ch, line_number),
                                 };
 
                             res
                         }
-                        _ => Self::NetlistName(s.replace(";", "")),
+                        _ => Self::NetlistName(s.replace(";", ""), line_number),
                     },
-                    None => Self::EndMarker,
+                    None => Self::EndMarker(line_number),
                 };
                 res
             }
-            '-' => Self::Arg(Argument::from(s, line_number)),
+            '-' => Self::Arg(Argument::from(s, line_number), line_number),
             '$' => match s.to_lowercase().contains("probe") {
-                true => Self::Pobe,
+                true => Self::Pobe(line_number),
                 false => error_out!("Lexeme '{}' in line {}: it must be $PROBE", s, line_number),
             },
-            '/' => Self::Comment,
+            '/' => Self::Comment(line_number),
             _ => error_out!(
                 "Problem with lexeme '{}' in line {}: it's not a valid lexeme for Scheesim Netlist",
                 s,
@@ -351,6 +351,17 @@ impl LexemeLine {
                 .map(|s| Lexeme::from(s, line_number))
                 .collect::<Vec<Lexeme>>(),
         )
+    }
+
+}
+
+impl IntoIterator for LexemeLine {
+    type Item = Lexeme;
+
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

@@ -1,34 +1,33 @@
-use std::any::Any;
-
 use scheesim_lexparse::*;
-
-pub trait ComponentStamp<T: Sized + 'static>  {
-    fn stamp(&self) -> T;
-}
-
-pub enum Profile {
-    Named(String),
-    Default,
-}
 
 pub struct Resistor {
     nonlinear: bool,
     resistance: f64,
-    profile: Profile,
+}
+
+impl Resistor {
+    pub fn from(lexeme_line: LexemeLine) -> Self {
+        let mut nonlinear = false;
+        let mut resistance = 0.0f64;
+
+        for ll in lexeme_line {
+            match ll {
+                Lexeme::Arg()
+            }
+        }
+    }
 }
 
 pub struct Capacitor {
     nonlinear: bool,
     dynamic: bool,
     capacitance: f64,
-    profile: Profile,
 }
 
 pub struct Inductor {
     nonlinear: bool,
     dynamic: bool,
     inductance: f64,
-    profile: Profile,
 }
 
 pub enum TransistorType {
@@ -90,6 +89,12 @@ pub enum Component {
     CurrentControlledVoltageSource(CurrentControlledVoltageSource),
     VoltageControlledCurrentSource(VoltageControlledCurrentSource),
     VoltageControlledVoltageSource(VoltageControlledVoltageSource),
+}
+
+
+pub enum Profile {
+    Named(String),
+    Default,
 }
 
 
