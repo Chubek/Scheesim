@@ -388,3 +388,13 @@ impl Netlist {
         }
     }
 }
+
+impl IntoIterator for Netlist {
+    type Item = LexemeLine;
+
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
