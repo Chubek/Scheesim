@@ -205,29 +205,79 @@ pub struct ACSweep {
     max_voltage: f64,
 }
 
-pub struct IndependentVoltageSource(f64);
-pub struct IndependentCurrentSource(f64);
+impl ACSweep {
+    pub fn from(lexeme_line: LexemeLine, line_number: usize) -> Self {
+        let mut freq = 0.0f64;
+        let mut max_voltage = 0.0f64;
 
-pub struct CurrentControlledCurrentSource {
-    dom_current: f64,
-    sub_current: f64,
+        for ll in lexeme_line {
+            match ll {
+                Lexeme::Arg(arg) => match arg {
+                    Argument::Frequency(unit) => freq = unit.get_corresponding_value(),
+                    Argument::MaxVoltage(unit) => max_voltage = unit.get_corresponding_value(),
+                    _ =>  error_out!("AC Sweep in line {} got wrong type of argument", line_number),
+                },
+                _ => error_out!("Wrong lexeme found in line {} for AC sweep. You can only pass arguments here.", line_number),
+            }
+        }
+
+        if freq == 0.0f64 {
+            error_out!("You either did not pass -freq in line {} or you passed a frequency of 0.0, it's required that you revise.", line_number);
+        }
+
+
+        if max_voltage == 0.0f64 {
+            error_out!("You either did not pass -max_voltage in line {} or you passed a voltage of 0.0, it's required that you revise.", line_number);
+        }
+
+        Self { freq, max_voltage }
+    }
 }
 
-pub struct CurrentControlledVoltageSource {
-    dom_current: f64,
-    sub_voltage: f64,
+pub enum VoltAmps {
+    ParentAmps(f64),
+    ChildAmps(f64),
+    IndependentAmps(f64),
+    ParentVolts(f64),
+    ChildVolts(f64),
+    IndependentVolts(f64),
 }
 
-pub struct VoltageControlledCurrentSource {
-    dom_voltage: f64,
-    sub_current: f64,
+
+pub enum DCSource {
+    Voltage(VoltAmps),
+    Current(VoltAmps),
+    CurrentByCurrent(VoltAmps, VoltAmps),
+    CurrentByVoltage(VoltAmps, VoltAmps),
+    VoltageByCurrent(VoltAmps, VoltAmps),
+    VoltageByVoltage(VoltAmps, VoltAmps),
 }
 
-pub struct VoltageControlledVoltageSource {
-    dom_voltage: f64,
-    sub_voltage: f64,
-}
+impl DCSource {
+    pub fn from(lexems: LexemeLine, line_number: usize) -> Self {
+        let count_arguments = lexems.count_arguments();
 
+        let self = match count_arguments {
+            0 => error_out!("DCSorce needs at least one solo voltage/current or a pair of parent/child voltages/currents in line {}", line_number),
+            1 => {
+                
+                let voltamps = for ll in lexems {
+                    match ll {
+                        Lexeme::Arg(arg) =>  match arg {
+                            Argument::Current(currentage) => {
+                                match currentage {
+                                    Currentage::Solo(unit) => break VoltAmps::IndependentAmps(unit.get_corresponding_value()),
+                                    _ => error_out!("When you have passed only one voltage/current, it must be independent at line {}", line_number),
+                                }
+                            },
+                            _ => error_out!("You can only pass voltage/current to DCSource at line {}", line_number),
+                        }
+                    }
+                };
+            }
+        }
+    }
+}
 
 pub enum Component {
     Resistor(Resistor),
@@ -236,12 +286,7 @@ pub enum Component {
     Transistor(Transistor),
     Diode(Diode),
     ACSweep(ACSweep),
-    IndependentCurrentSource(IndependentCurrentSource),
-    IndependentVoltageSource(IndependentVoltageSource),
-    CurrentControlledCurrentSource(CurrentControlledCurrentSource),
-    CurrentControlledVoltageSource(CurrentControlledVoltageSource),
-    VoltageControlledCurrentSource(VoltageControlledCurrentSource),
-    VoltageControlledVoltageSource(VoltageControlledVoltageSource),
+    DCSource(DCSource),    
 }
 
 

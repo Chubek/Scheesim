@@ -77,7 +77,6 @@ pub fn make_vec(input: TokenStream) -> TokenStream {
         split.next().expect("Error type"),
         split.next().expect("Error initializer"),
         split.next().expect("Error size"),
-
     );
 
     let final_str = format!(r#"

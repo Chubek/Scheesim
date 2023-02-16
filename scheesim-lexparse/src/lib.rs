@@ -1,6 +1,8 @@
-use std::{fs::File, io::read_to_string};
+use std::{fs::File, io::read_to_string, path::Component, cell::{RefCell, Ref}};
+use scheesim_macro::*;
 
-pub enum ComponentMarker {
+#[derive(Clone)]
+enum ElementMarker {
     ACSweep,
     DCSource,
     Resistor,
@@ -22,7 +24,21 @@ macro_rules! error_out {
     };
 }
 
-impl ComponentMarker {
+macro_rules! copy_vec {
+    ($v:ident) => {
+        {
+            let mut vc = vec![];
+
+            for itm in $v {
+                vc.push(itm.clone());
+            }
+
+            vc
+        }
+    };
+}
+
+impl ElementMarker {
     pub fn from(s: &str, line_num: usize) -> Self {
         match s.to_lowercase().as_str() {
             ".acsweep" => Self::ACSweep,
@@ -37,7 +53,8 @@ impl ComponentMarker {
     }
 }
 
-pub enum Unit {
+#[derive(Clone)]
+enum Unit {
     Quetta(f64),
     Ronna(f64),
     Yotta(f64),
@@ -151,7 +168,8 @@ impl Unit {
     }
 }
 
-pub enum JunctionChannel {
+#[derive(Clone)]
+enum JunctionChannel {
     NPN,
     PNP,
     NP,
@@ -174,7 +192,8 @@ impl JunctionChannel {
     }
 }
 
-pub enum Connection {
+#[derive(Clone)]
+enum Connection {
     Serial(String),
     Parallel(String),
     Ground,
@@ -196,13 +215,15 @@ impl Connection {
     }
 }
 
-pub enum Currentage {
+#[derive(Clone)]
+enum Currentage {
     Solo(Unit),
     Dom(Unit),
     Sub(Unit),
 }
 
-pub enum Argument {
+#[derive(Clone)]
+enum Argument {
     Author(String),
     Date(String),
     In(Connection),
@@ -245,9 +266,7 @@ impl Argument {
                         "-in" => Self::In(Connection::from(&value, true)),
                         "-base" => Self::Base(Connection::from(&value, true)),
                         "-out" => Self::Out(Connection::from(&value, true)),
-                        "-in*" => Self::In(Connection::from(&value, false)),
-                        "-base*" => Self::Base(Connection::from(&value, false)),
-                        "-out*" => Self::Out(Connection::from(&value, false)),
+                        "-parallel" => Self::Out(Connection::from(&value, false)),
 
                         _ => {
                             let value_unit = Unit::from(&value, line_number);
@@ -282,11 +301,142 @@ impl Argument {
             },
         }
     }
+
+    pub fn is_key(&self, key: &'static str) -> bool {
+        match key {
+            "author" => {
+                match self {
+                    Self::Author(_) => true,
+                    _ => false,
+                }
+            },
+            "date" => {
+                match self {
+                    Self::Date(_) => true,
+                    _ => false,
+                }
+            },
+            "in" => {
+                match self {
+                    Self::In(_) => true,
+                    _ => false,
+                }
+            },
+            "out" => {
+                match self {
+                    Self::Out(_) => true,
+                    _ => false,
+                }
+            },
+            "base" => {
+                match self {
+                    Self::Base(_) => true,
+                    _ => false,
+                }
+            },
+            "voltage" => {
+                match self {
+                    Self::Voltage(_) => true,
+                    _ => false,
+                }
+            },
+            "voltage" => {
+                match self {
+                    Self::Voltage(_) => true,
+                    _ => false,
+                }
+            },
+            "voltage" => {
+                match self {
+                    Self::Voltage(_) => true,
+                    _ => false,
+                }
+            },
+            "max_voltage" => {
+                match self {
+                    Self::MaxVoltage(_) => true,
+                    _ => false,
+                }
+            },
+            "power" => {
+                match self {
+                    Self::Power(_) => true,
+                    _ => false,
+                }
+            },
+            "current" => {
+                match self {
+                    Self::Current(_) => true,
+                    _ => false,
+                }
+            },
+            "resistance" => {
+                match self {
+                    Self::Resistance(_) => true,
+                    _ => false,
+                }
+            },
+            "capacitance" => {
+                match self {
+                    Self::Capacitance(_) => true,
+                    _ => false,
+                }
+            },
+            "inductance" => {
+                match self {
+                    Self::Inductance(_) => true,
+                    _ => false,
+                }
+            },
+            "frequency" => {
+                match self {
+                    Self::Frequency(_) => true,
+                    _ => false,
+                }
+            },
+            "junction_channel" => {
+                match self {
+                    Self::JunctionChannel(_) => true,
+                    _ => false,
+                }
+            },
+            "dynamic" => {
+                match self {
+                    Self::Dynamic => true,
+                    _ => false,
+                }
+            },
+            "nonlinear" => {
+                match self {
+                    Self::Nonlinear => true,
+                    _ => false,
+                }
+            }
+        }  
+    }
 }
 
-pub enum Lexeme {
+trait FilterArgList {
+    fn filter(&self, key: &'static str) -> Vec<Argument>;
+}
+
+impl FilterArgList for Vec<Argument> {
+    fn filter(&self, key: &'static str) -> Vec<Argument> {
+        self
+            .clone()
+            .into_iter()
+            .filter(|x| {
+                x.is_key(key)
+            })
+            .collect()
+    }
+}
+
+
+#[derive(Clone)]
+enum Lexeme {
     NetlistName(String),
-    Component(ComponentMarker),
+    Element(ElementMarker),
     NodeName(String),
     ProfileName(String),
     Arg(Argument),
@@ -341,9 +491,102 @@ impl Lexeme {
             ),
         }
     }
+
+    pub fn is_arg(&self) -> bool {
+        match self {
+            Self::Arg(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_arg(&self) -> Option<Argument> {
+        match self {
+            Self::Arg(arg) => Some(arg.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn is_propub_fname(&self) -> bool {
+        match self {
+            Self::ProfileName(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_propub_fname(&self) -> Option<String> {
+        match self {
+            Self::ProfileName(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+
+    pub fn is_element(&self) -> bool {
+        match self {
+            Self::Element(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_element(&self) -> Option<ElementMarker> {
+        match self {
+            Self::Element(e) => Some(e.clone()),
+            _ => None,
+        }
+    }
+
+
+    pub fn is_nlname(&self) -> bool {
+        match self {
+            Self::NetlistName(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_nlname(&self) -> Option<String> {
+        match self {
+            Self::NetlistName(nl) => Some(nl.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn is_ndname(&self) -> bool {
+        match self {
+            Self::NodeName(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_ndname(&self) -> Option<String> {
+        match self {
+            Self::NodeName(nd) => Some(nd.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn is_probe(&self) -> bool {
+        match self {
+            Self::Pobe => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_endmarker(&self) -> bool {
+        match self {
+            Self::EndMarker => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_comment(&self) -> bool {
+        match self {
+            Self::Comment => true,
+            _ => false,
+        }
+    }
 }
 
-pub struct LexemeLine {
+struct LexemeLine {
     lexemes: Vec<Lexeme>,
     line_number: usize,
 }
@@ -357,6 +600,115 @@ impl LexemeLine {
         Self { lexemes, line_number }
     }
 
+    pub fn count_arguments(&self) -> usize {
+        self.lexemes.iter().filter(|x| x.is_arg()).count()
+    }
+
+    pub fn get_args(&self) -> Vec<Argument> {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_arg())
+                            .map(|x| x.clone().get_arg().unwrap()
+            )
+            .collect()
+    }
+
+    pub fn get_elements(&self) -> Vec<ElementMarker> {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_element())
+                            .map(|x| x.clone().get_element().unwrap()
+            )
+            .collect()
+    }
+
+
+    pub fn get_nlname(&self) -> Vec<String> {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_nlname())
+                            .map(|x| x.clone().get_nlname().unwrap()
+            )
+            .collect()
+    }
+
+    pub fn get_ndname(&self) -> Vec<String> {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_ndname())
+                            .map(|x| x.clone().get_ndname().unwrap()
+            )
+            .collect()
+    }
+
+    pub fn get_propub_fnames(&self) -> Vec<String> {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_propub_fname())
+                            .map(|x| x.clone().get_propub_fname().unwrap()
+            )
+            .collect()
+    }
+
+    pub fn has_valid_element(&self) -> bool {
+        self.get_elements().len() == 1
+    }
+
+    pub fn has_valid_arument(&self, num: usize) -> bool {
+        self.get_args().len() >= num
+    }
+
+    pub fn has_valid_nlnames(&self) -> bool {
+        self.get_nlname().len() == 1
+    }
+
+    pub fn has_valid_ndnames(&self) -> bool {
+        self.get_ndname().len() == 1
+    }
+
+    pub fn has_valid_propub_fnames(&self) -> bool {
+        self.get_ndname().len() == 1
+    }
+
+    pub fn has_probe(&self) -> bool {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_probe()
+            )
+            .count() > 0
+    }
+
+    pub fn has_endmarker(&self) -> bool {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_endmarker()
+            )
+            .count() > 0
+    }
+
+    pub fn has_comment(&self) -> bool {
+        self.lexemes
+            .clone()
+            .into_iter()
+            .filter(
+                |x| x.is_comment()
+            )
+            .count() > 0
+    }
 }
 
 impl IntoIterator for LexemeLine {
@@ -369,17 +721,28 @@ impl IntoIterator for LexemeLine {
     }
 }
 
-pub struct Netlist(Vec<LexemeLine>);
+impl Clone for LexemeLine {
+    fn clone(&self) -> Self {
+        Self { lexemes: self.lexemes.clone(), line_number: self.line_number.clone() }
+    }
+}
+
+
+struct Netlist {
+    lines: Vec<LexemeLine>,
+    current_line: usize,
+}
 
 impl Netlist {
     pub fn from(netlist: &str) -> Self {
-        Self(
-            netlist
+        Self {
+            lines: netlist
                 .lines()
                 .enumerate()
                 .map(|(i, s)| LexemeLine::from(s, i + 1))
                 .collect(),
-        )
+            current_line: 0,
+        }
     }
 
     pub fn from_file(fp: &str) -> Self {
@@ -391,14 +754,335 @@ impl Netlist {
             Err(e) => error_out!("Opening file '{}' for reading: {}", fp, e),
         }
     }
+
+    pub fn advance(&mut self) {
+        self.current_line += 1;
+    }
+
+    pub fn get_at(&self, index: usize) -> Option<RefCell<LexemeLine>> {
+        match self.lines.get(index) {
+            Some(lexeme_line) => Some(RefCell::new(lexeme_line.clone())),
+            None => None,
+        }
+    }
+
+    pub fn get_at_refcell(this: RefCell<Self>, index: usize) -> Option<RefCell<LexemeLine>> {
+        let this_ref = this.borrow();
+
+        this_ref.get_at(index)
+    }
+
+    pub fn get_curr(&self) -> Option<RefCell<LexemeLine>> {
+        match self.lines.get(self.current_line) {
+            Some(lexeme_line) => Some(RefCell::new(lexeme_line.clone())),
+            None => None,
+        }
+    }
+
+    pub fn get_curr_and_advance(netlist: &RefCell<Self>) -> Option<RefCell<LexemeLine>> {
+        let mut ref_mut_this = netlist.get_mut();
+        let curr = ref_mut_this.get_curr();
+        ref_mut_this.advance();
+
+        curr
+    }
 }
 
-impl IntoIterator for Netlist {
-    type Item = LexemeLine;
 
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+impl Clone for Netlist {
+    fn clone(&self) -> Self {
+        Self { lines: self.lines.clone(), current_line: self.current_line.clone() }
+    }
+}
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+struct Resistor {
+    nonlinear: bool,
+    resistance: f64,
+}
+
+struct Capacitor {
+    nonlinear: bool,
+    dynamic: bool,
+    capacitance: f64,
+}
+
+struct Inductor {
+    nonlinear: bool,
+    dynamic: bool,
+    inductance: f64,
+}
+
+enum TransistorType {
+    BJT,
+    MOSFET,
+}
+
+struct Transistor {
+    power: f64,
+    voltage: f64,
+    junction_channel: JunctionChannel,
+    trantype: TransistorType,
+}
+
+struct Diode {
+    power: f64,
+    voltage: f64,
+    junction: JunctionChannel,
+}
+
+struct ACSweep {
+    freq: f64,
+    max_voltage: f64,
+}
+
+enum VoltAmps {
+    ParentAmps(f64),
+    ChildAmps(f64),
+    IndependentAmps(f64),
+    ParentVolts(f64),
+    ChildVolts(f64),
+    IndependentVolts(f64),
+}
+
+
+enum DCSource {
+    Voltage(VoltAmps),
+    Current(VoltAmps),
+    CurrentByCurrent(VoltAmps, VoltAmps),
+    CurrentByVoltage(VoltAmps, VoltAmps),
+    VoltageByCurrent(VoltAmps, VoltAmps),
+    VoltageByVoltage(VoltAmps, VoltAmps),
+}
+
+enum EelectroCircuitComponent {
+    Resistor(Resistor),
+    Capacitor(Capacitor),
+    Inductor(Inductor),
+    Transistor(Transistor),
+    Diode(Diode),
+    ACSweep(ACSweep),
+    DCSource(DCSource),    
+    Init,
+}
+
+struct ElectroCircuitSigniture {
+    author: String,
+    date: String,
+}
+
+enum ConnectionType {
+    Named(String),
+    Probe,
+    Ground,
+    Next,
+    Previous,
+    Init,
+}
+
+struct ElectoCircuitConnection {
+    serial_in: ConnectionType,
+    serial_out: ConnectionType,
+    serial_base: Option<ConnectionType>,
+    parallel: Vec<ConnectionType>,
+}
+
+impl ElectoCircuitConnection {
+    pub fn init() -> Self {
+        Self { 
+            serial_in: ConnectionType::Init, 
+            serial_out: ConnectionType::Init,
+            serial_base: None, 
+            parallel: vec![],
+        }
+    }
+
+    pub fn modify_serial_in(&mut self, serial: ConnectionType) {
+        self.serial_in = serial;
+    }
+
+    pub fn modify_serial_out(&mut self, serial: ConnectionType) {
+        self.serial_out = serial;
+    }
+
+    pub fn modify_serial_base(&mut self, serial: ConnectionType) {
+        self.serial_base = Some(serial);
+    }
+
+    pub fn add_parallel(&mut self, parallel: ConnectionType) {
+        self.parallel.push(parallel);
+    }
+}
+
+struct ElectroCircuitNodeProfile {
+    name: String,
+    components: Vec<EelectroCircuitComponent>,
+}
+
+impl ElectroCircuitNodeProfile {
+    pub fn init() -> Self {
+        Self { name: String::new(), components: vec![] }
+    }
+
+    pub fn modify_name(&mut self, name: String) {
+        self.name = name;
+    } 
+
+    pub fn init_components(&mut self, num: usize) {
+        self.components = make_vec!(EelectroCircuitComponent $ EelectroCircuitComponent::Init $ num);
+    }
+
+    pub fn set_nth_components(&mut self, component: EelectroCircuitComponent, n: usize) {
+        self.components[n] = component;
+    }
+}
+
+struct ElectroCircuitNode {
+    name: String,
+    profiles: Vec<ElectroCircuitNodeProfile>,
+    connections: ElectoCircuitConnection,
+}
+
+impl ElectroCircuitNode {
+    pub fn init() -> Self {
+        Self { 
+            name: String::new(), 
+            profiles: vec![], 
+            connections: ElectoCircuitConnection::init()
+         }
+    }
+}
+
+struct ElectroCircuit {
+    name: String,
+    author: Option<String>,
+    date: Option<String>,
+    nodes: Vec<ElectroCircuitNode>,
+}
+
+impl ElectroCircuit {
+    pub fn new() -> RefCell<ElectroCircuit> {
+        RefCell::new(Self { name: String::new(), author: None, date: None, nodes: vec![] })
+    }
+
+    pub fn modify_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    pub fn modify_author(&mut self, author: String) {
+        self.author = Some(author);
+    }
+
+    pub fn modify_date(&mut self, date: String) {
+        self.date = Some(date)
+    }
+
+    pub fn set_nodes_vec(&mut self, num_nodes: usize) {
+
+    }
+}
+
+
+#[derive(Clone)]
+enum LexerState {
+    CircuitName(RefCell<LexemeLine>, RefCell<Netlist>),
+    CircuitNode(RefCell<LexemeLine>, RefCell<Netlist>),
+    NodeProfile(RefCell<LexemeLine>, RefCell<Netlist>),
+    InOutArgs(RefCell<LexemeLine>, RefCell<Netlist>),
+    UnitArgs(RefCell<LexemeLine>, RefCell<Netlist>),
+    FlagArgs(RefCell<LexemeLine>, RefCell<Netlist>),
+    IdentityArgs(RefCell<LexemeLine>, RefCell<Netlist>),
+    EndCircuit(RefCell<LexemeLine>, RefCell<Netlist>),
+    Begin(RefCell<Netlist>),
+}
+
+impl LexerState {
+    pub fn parse_begin(&self) -> Option<Self> {
+        match self.is_this_type("begin") {
+            true => {
+                let Self::Begin(netlist) = self.clone();
+                match Netlist::get_curr_and_advance(&netlist) {
+                    Some(lexeme_line) => Some(Self::CircuitName(lexeme_line, netlist)),
+                    None => error_out!("Error on line 1: probably empty file.",)
+                }
+            },
+            false => None,
+        }
+
+    }
+
+    pub fn parse_circuit_name(&self) -> Option<Self> {
+        match self.is_this_type("circuit_name") {
+            true => {
+                let (lexeme_line, netlist) = self.get_values();
+
+                let ll_ref = lexeme_line.get_mut();
+                let nl_ref = netlist.get_mut();
+
+                let nl_match ll_ref.has_valid_nlnames() {}
+            }
+            false => None,
+        }
+    }
+}
+
+trait LexerStateFilterAndGet {
+    fn is_this_type(&self, key: &'static str) -> bool;
+    fn get_values(&self) -> (&RefCell<LexemeLine>, &RefCell<Netlist>);
+}
+
+impl LexerStateFilterAndGet for LexerState {
+    fn is_this_type(&self, key: &'static str) -> bool {
+        match key {
+            "circuit_name" => match self {
+                Self::CircuitName(_, _) => true,
+                _ => false,
+            },
+            "circuit_node" => match self {
+                Self::CircuitNode(_, _) => true,
+                _ => false,
+            },
+            "node_profile" => match self {
+                Self::NodeProfile(_, _) => true,
+                _ => false,
+            },            
+            "inout_args" => match self {
+                Self::InOutArgs(_, _) => true,
+                _ => false,
+            },
+            "unit_args" => match self {
+                Self::UnitArgs(_, _) => true,
+                _ => false,
+            },
+            "flag_args" => match self {
+                Self::FlagArgs(_, _) => true,
+                _ => false,
+            },
+            "identity_args" => match self {
+                Self::IdentityArgs(_, _) => true,
+                _ => false,
+            },
+            "end_circuit" => match self {
+                Self::EndCircuit(_, _) => true,
+                _ => false,
+            },
+            "begin" => match self {
+                Self::Begin(_) => true,
+                _ => false,
+            }
+        }
+    }
+
+    fn get_values(&self) -> (&RefCell<LexemeLine>, &RefCell<Netlist>) {
+        match self {
+            LexerState::CircuitName(ll, nl) => (ll, nl),
+            LexerState::CircuitNode(ll, nl) => (ll, nl),
+            LexerState::NodeProfile(ll, nl) => (ll, nl),
+            LexerState::InOutArgs(ll, nl) => (ll, nl),
+            LexerState::UnitArgs(ll, nl) => (ll, nl),
+            LexerState::FlagArgs(ll, nl) => (ll, nl),
+            LexerState::IdentityArgs(ll, nl) => (ll, nl),
+            LexerState::EndCircuit(ll, nl) => (ll, nl),
+            LexerState::Begin(_) => error_out!("State non-compliant",),
+        }
     }
 }
